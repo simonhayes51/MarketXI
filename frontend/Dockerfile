@@ -12,10 +12,11 @@ RUN npm run build
 FROM node:20-alpine
 WORKDIR /app
 
-RUN npm i -g serve
+# Simple static server that plays nice with PORT
+RUN npm i -g http-server
+
 COPY --from=build /app/dist /app/dist
 
 EXPOSE 3000
 
-# IMPORTANT: explicit TCP endpoint so serve doesn't error
-CMD ["sh", "-c", "serve -s dist --listen tcp://0.0.0.0:${PORT:-3000}"]
+CMD ["sh", "-c", "http-server /app/dist -a 0.0.0.0 -p ${PORT:-3000}"]
