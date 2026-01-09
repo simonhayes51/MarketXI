@@ -3,7 +3,7 @@ FROM node:20-alpine AS build
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm install
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
 COPY . .
 RUN npm run build
@@ -12,13 +12,10 @@ RUN npm run build
 FROM node:20-alpine
 WORKDIR /app
 
-# Install a static file server
 RUN npm i -g serve
-
-# Copy built site
 COPY --from=build /app/dist /app/dist
 
 EXPOSE 3000
 
-# IMPORTANT: run via shell so ${PORT} expands (Railway sets PORT)
-CMD ["sh", "-c", "serve -s dist -l ${PORT:-3000}"]
+# IMPORTANT: explicit TCP endpoint so serve doesn't error
+CMD ["sh", "-c", "serve -s dist --listen tcp://0.0.0.0:${PORT:-3000}"]
