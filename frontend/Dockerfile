@@ -12,12 +12,8 @@ RUN npm run build
 FROM node:20-alpine
 WORKDIR /app
 
-# Use http-server (not serve)
 RUN npm i -g http-server
-
 COPY --from=build /app/dist /app/dist
 
 EXPOSE 3000
-
-# DEBUG: print PORT then start
-CMD ["sh", "-c", "echo \"PORT is: ${PORT}\"; http-server /app/dist -a 0.0.0.0 -p ${PORT:-3000}"]
+CMD ["sh", "-c", "echo PORT=${PORT}; http-server /app/dist -a 0.0.0.0 -p ${PORT:-3000}"]
