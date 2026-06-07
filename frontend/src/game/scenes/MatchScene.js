@@ -23,6 +23,17 @@ export default class MatchScene extends Phaser.Scene {
     super({ key: 'MatchScene' });
   }
 
+  preload() {
+    // Original Sensible World of Soccer audio (converted from RAW → WAV)
+    this.load.audio('kick',     '/sounds/kick.wav');
+    this.load.audio('whistle',  '/sounds/whistle.wav');
+    this.load.audio('goal',     '/sounds/goal.wav');
+    this.load.audio('cheer',    '/sounds/cheer.wav');
+    this.load.audio('goalkick', '/sounds/goalkick.wav');
+    this.load.audio('crowd',    '/sounds/crowd.wav');
+    this.load.audio('bounce',   '/sounds/bounce.wav');
+  }
+
   init(data) {
     const cfg = (data && data.homeTeam) ? data : (window.__MATCH_CONFIG__ || {});
     this.homeTeam = cfg.homeTeam || { primaryColor: '#EF0107', secondaryColor: '#FFFFFF', name: 'Arsenal', shortName: 'ARS', rating: 85 };
@@ -234,6 +245,20 @@ export default class MatchScene extends Phaser.Scene {
       callbackScope: this,
       loop: true,
     });
+
+    // Ambient crowd chant (looping, low volume) — original SWOS audio
+    try {
+      this.crowdSound = this.sound.add('crowd', { loop: true, volume: 0.22 });
+      this.crowdSound.play();
+    } catch (e) { /* audio blocked — user must interact first */ }
+  }
+
+  // ─── SOUND ────────────────────────────────────────────────────────────────
+
+  playSound(key, volume = 0.8) {
+    try {
+      if (this.sound.get(key)) this.sound.play(key, { volume });
+    } catch (e) { /* ignore audio errors */ }
   }
 
   // ─── POSSESSION ──────────────────────────────────────────────────────────
@@ -352,6 +377,7 @@ export default class MatchScene extends Phaser.Scene {
     this.ball.reset(this.PITCH_WIDTH / 2, this.PITCH_HEIGHT / 2);
     this.resetPlayersToFormation();
 
+    this.playSound('whistle', 0.9);
     this.showMessage(isFirstHalf ? 'KICK OFF!' : 'SECOND HALF!', 2000, () => {
       this.gamePhase = 'playing';
       // Give the home center forward possession at kickoff
@@ -421,6 +447,8 @@ export default class MatchScene extends Phaser.Scene {
     this.events.emit('scoreUpdate', { ...this.score });
     this.cameras.main.shake(500, 0.022);
     this.cameras.main.flash(300, 255, 215, 0);
+    this.playSound('goal', 1.0);
+    this.time.delayedCall(800, () => this.playSound('cheer', 0.8));
 
     const h = this.score.home;
     const a = this.score.away;
@@ -622,12 +650,11 @@ export default class MatchScene extends Phaser.Scene {
     const dist = Math.sqrt(dx * dx + dy * dy);
     const angle = Math.atan2(dy, dx);
 
-    // Proportional pass speed — short passes = softer
     const passSpd = Phaser.Math.Clamp(150 + dist * 0.75, 200, 380);
 
     this.ball.kick(Math.cos(angle) * passSpd, Math.sin(angle) * passSpd);
     this.ball.lastTouched = player;
-
+    this.playSound('kick', 0.65);
     this.cameras.main.flash(35, 255, 255, 255, false);
   }
 
@@ -654,6 +681,7 @@ export default class MatchScene extends Phaser.Scene {
     const angle = Phaser.Math.Angle.Between(player.x, player.y, targetX, targetY);
     this.ball.kick(Math.cos(angle) * 350, Math.sin(angle) * 350);
     this.ball.lastTouched = player;
+    this.playSound('kick', 0.6);
   }
 
   doShoot(player, power) {
@@ -677,8 +705,9 @@ export default class MatchScene extends Phaser.Scene {
     );
     this.ball.lastTouched = player;
     this.ball.isShotOnGoal = true;
+    this.playSound('kick', 1.0);
 
-    // Enable after-touch steering (700ms window — SS signature mechanic)
+    // After-touch steering window (SS signature mechanic)
     this.afterTouchActive   = true;
     this.afterTouchDuration = 700;
 
@@ -913,6 +942,7 @@ export default class MatchScene extends Phaser.Scene {
   doGoalKick(teamSide) {
     const gkX = teamSide === 'home' ? this.HOME_GOAL_X + 35 : this.AWAY_GOAL_X - 35;
     this.ball.reset(gkX, this.PITCH_HEIGHT / 2);
+    this.playSound('goalkick', 0.7);
     this.showMessage('GOAL KICK', 900, () => {
       if (this.gamePhase !== 'playing') return;
       const targetX = teamSide === 'home' ? this.PITCH_WIDTH * 0.55 : this.PITCH_WIDTH * 0.45;

@@ -291,11 +291,11 @@ function MobileControls() {
       <div ref={joystickBaseRef} style={{ display: 'none' }} />
       <div ref={joystickThumbRef} style={{ display: 'none' }} />
 
-      {/* Action buttons — bottom-right */}
+      {/* Action buttons — bottom-right, raised above browser nav bar */}
       <div style={{
         position: 'absolute',
         right: 14,
-        bottom: 14,
+        bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))',
         display: 'flex',
         flexDirection: 'column',
         gap: 8,
