@@ -5,31 +5,34 @@ export default class AIController {
 
     const params = {
       easy: {
-        reactionDelay:    700,
-        passingAccuracy:  0.60,
-        shootingAccuracy: 0.50,
-        passFrequency:    0.40,
-        shootFrequency:   0.30,
-        speed:            0.78,
-        tackleRange:      28,
+        reactionDelay:    650,
+        passingAccuracy:  0.58,
+        shootingAccuracy: 0.48,
+        passFrequency:    0.38,
+        shootFrequency:   0.28,
+        speed:            0.80,
+        tackleRange:      26,
+        pressRadius:      160,
       },
       medium: {
-        reactionDelay:    380,
+        reactionDelay:    320,
         passingAccuracy:  0.78,
-        shootingAccuracy: 0.68,
-        passFrequency:    0.55,
-        shootFrequency:   0.50,
-        speed:            0.92,
-        tackleRange:      34,
+        shootingAccuracy: 0.70,
+        passFrequency:    0.58,
+        shootFrequency:   0.52,
+        speed:            0.95,
+        tackleRange:      36,
+        pressRadius:      220,
       },
       hard: {
-        reactionDelay:    140,
-        passingAccuracy:  0.92,
-        shootingAccuracy: 0.83,
-        passFrequency:    0.72,
-        shootFrequency:   0.65,
-        speed:            1.06,
-        tackleRange:      42,
+        reactionDelay:    120,
+        passingAccuracy:  0.93,
+        shootingAccuracy: 0.86,
+        passFrequency:    0.75,
+        shootFrequency:   0.68,
+        speed:            1.08,
+        tackleRange:      44,
+        pressRadius:      300,
       },
     };
 
@@ -119,10 +122,15 @@ export default class AIController {
         this.handleSupportRun(player, idx, ball, true);
       } else {
         const distToBall = Phaser.Math.Distance.Between(player.x, player.y, ballX, ballY);
-        // Nearest away player presses hard
         const isNearest = this.isNearestAwayToBall(player, awayPlayers, ballX, ballY);
-        if (isNearest) {
+        // Nearest player presses; second-nearest closes off passing lane; rest hold shape
+        if (isNearest && distToBall < this.params.pressRadius) {
           this.setTarget(player, ballX, ballY);
+        } else if (this.isSecondNearestAwayToBall(player, awayPlayers, ballX, ballY)) {
+          // Close off space between ball and goal
+          const tx = (ballX + scene.AWAY_GOAL_X) / 2 + (Math.random() - 0.5) * 40;
+          const ty = ballY + (Math.random() - 0.5) * 55;
+          this.setTarget(player, tx, ty);
         } else {
           this.handleDefensivePosition(player, idx, ball, ballInAwayhalf);
         }
@@ -309,6 +317,14 @@ export default class AIController {
       if (d < minDist) { minDist = d; nearest = p; }
     });
     return nearest === player;
+  }
+
+  isSecondNearestAwayToBall(player, awayPlayers, bx, by) {
+    const sorted = awayPlayers
+      .filter((_, i) => i !== 0)
+      .map(p => ({ p, d: Phaser.Math.Distance.Between(p.x, p.y, bx, by) }))
+      .sort((a, b) => a.d - b.d);
+    return sorted.length >= 2 && sorted[1].p === player;
   }
 
   setTarget(player, x, y) {

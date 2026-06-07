@@ -6,7 +6,7 @@ export default class Player {
     this.number = number;
     this.role = role;
     this.isControlled = false;
-    this.speed = 155 + Math.random() * 35;
+    this.speed = 185 + Math.random() * 35;
     this.stamina = 1.0;
     this.staminaDrain = 0.00004;
     this.homeX = x;

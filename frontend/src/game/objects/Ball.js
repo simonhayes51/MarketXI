@@ -11,9 +11,9 @@ export default class Ball {
     this.sprite = scene.physics.add.sprite(x, y, 'ball')
       .setCircle(7, 1, 1)
       .setCollideWorldBounds(false)
-      .setDragX(120)
-      .setDragY(120)
-      .setBounce(0.5)
+      .setDragX(72)
+      .setDragY(72)
+      .setBounce(0.55)
       .setDepth(5);
 
     // Spin tracking for curl effect
@@ -85,12 +85,11 @@ export default class Ball {
       this.sprite.body.setVelocity(0, 0);
     }
 
-    // Apply additional friction manually for a better feel
+    // Gentle per-frame friction so ball rolls further (SS feel)
     if (speed > 5) {
-      const friction = 0.97;
       const vx = this.sprite.body.velocity.x;
       const vy = this.sprite.body.velocity.y;
-      this.sprite.body.setVelocity(vx * friction, vy * friction);
+      this.sprite.body.setVelocity(vx * 0.984, vy * 0.984);
     }
   }
 
