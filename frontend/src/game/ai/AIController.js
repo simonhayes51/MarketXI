@@ -103,8 +103,7 @@ export default class AIController {
     const awayHasPossession = possessor?.side === 'away';
     const ballInAwayhalf    = ballX > scene.PITCH_WIDTH / 2;
 
-    // Update GK separately
-    this.updateGoalkeeper(awayPlayers[0], ball, homePlayers);
+    // GK is handled by Goalkeeper.doGKAI() — don't override from here.
 
     // Update outfield players
     awayPlayers.forEach((player, idx) => {
@@ -227,38 +226,6 @@ export default class AIController {
 
     ty = Phaser.Math.Clamp(ty, 20, scene.PITCH_HEIGHT - 20);
     this.setTarget(player, tx, ty);
-  }
-
-  updateGoalkeeper(gk, ball, homePlayers) {
-    if (!gk) return;
-    const scene = this.scene;
-    const bx = ball.x;
-    const by = ball.y;
-
-    const homeGoalX = scene.HOME_GOAL_X + 28;
-    const distToGoal = Math.abs(bx - scene.PITCH_WIDTH);
-
-    if (bx > scene.PITCH_WIDTH * 0.6) {
-      // Ball is far — stay on line, track Y
-      const targetY = Phaser.Math.Clamp(by, scene.GOAL_TOP + 10, scene.GOAL_BOTTOM - 10);
-      gk.moveTo(homeGoalX, targetY, this.params.speed * 0.9);
-    } else {
-      // Ball is close — come off line a bit
-      const targetX = Phaser.Math.Clamp(homeGoalX + (scene.PITCH_WIDTH / 2 - bx) * 0.06, homeGoalX - 10, homeGoalX + 50);
-      const targetY = Phaser.Math.Clamp(by, scene.GOAL_TOP + 8, scene.GOAL_BOTTOM - 8);
-      gk.moveTo(targetX, targetY, this.params.speed * 1.0);
-
-      // GK saves: if ball is heading toward goal, kick it away
-      const ballVx = ball.sprite.body.velocity.x;
-      if (ballVx < -80 && scene.ballPossessor === null) {
-        const distBallToGK = Phaser.Math.Distance.Between(gk.x, gk.y, bx, by);
-        if (distBallToGK < 40) {
-          const clearAngle = Phaser.Math.Angle.Between(gk.x, gk.y, scene.PITCH_WIDTH * 0.6, by + (Math.random() - 0.5) * 120);
-          ball.kick(Math.cos(clearAngle) * 380, Math.sin(clearAngle) * 380);
-          ball.lastTouched = gk;
-        }
-      }
-    }
   }
 
   aiShoot(player, ball) {
