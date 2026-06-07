@@ -11,26 +11,42 @@ export default class Pitch {
     const cx = W / 2;
     const cy = H / 2;
 
+    // Outer background (crowd area)
+    const outerGfx = scene.add.graphics().setDepth(-2);
+    outerGfx.fillStyle(0x1a1a2e, 1);
+    outerGfx.fillRect(-200, -200, W + 400, H + 400);
+
+    // Crowd strips at top and bottom (Sensible Soccer style)
+    this.drawCrowd(scene, W, H, outerGfx);
+
     const gfx = scene.add.graphics().setDepth(0);
 
-    // Pitch base - alternating stripes
-    const stripeCount = 14;
-    const stripeW = W / stripeCount;
+    // Grass stripes — 6 horizontal bands alternating two greens
+    const stripeCount = 6;
+    const stripeH = H / stripeCount;
     for (let i = 0; i < stripeCount; i++) {
-      gfx.fillStyle(i % 2 === 0 ? 0x2d8a2d : 0x308e30, 1);
-      gfx.fillRect(i * stripeW, 0, stripeW, H);
+      gfx.fillStyle(i % 2 === 0 ? 0x28a828 : 0x32c232, 1);
+      gfx.fillRect(0, i * stripeH, W, stripeH);
     }
 
-    // Pitch border
+    // Subtle penalty box fill (slightly darker green)
+    const penW = 165;
+    const penH = 250;
+    const penTop = cy - penH / 2;
+    gfx.fillStyle(0x248824, 0.35);
+    gfx.fillRect(0, penTop, penW, penH);
+    gfx.fillRect(W - penW, penTop, penW, penH);
+
+    // White pitch border
     gfx.lineStyle(3, 0xffffff, 1);
     gfx.strokeRect(10, 10, W - 20, H - 20);
 
     // Halfway line
-    gfx.lineStyle(2, 0xffffff, 0.9);
+    gfx.lineStyle(3, 0xffffff, 1);
     gfx.lineBetween(cx, 10, cx, H - 10);
 
     // Center circle
-    gfx.lineStyle(2, 0xffffff, 0.9);
+    gfx.lineStyle(3, 0xffffff, 1);
     gfx.strokeCircle(cx, cy, 70);
 
     // Center spot
@@ -38,10 +54,7 @@ export default class Pitch {
     gfx.fillCircle(cx, cy, 4);
 
     // Home penalty area (left)
-    const penW = 165;
-    const penH = 250;
-    const penTop = cy - penH / 2;
-    gfx.lineStyle(2, 0xffffff, 0.9);
+    gfx.lineStyle(3, 0xffffff, 1);
     gfx.strokeRect(10, penTop, penW, penH);
 
     // Away penalty area (right)
@@ -51,64 +64,74 @@ export default class Pitch {
     const sixW = 60;
     const sixH = 120;
     const sixTop = cy - sixH / 2;
-    gfx.lineStyle(2, 0xffffff, 0.8);
+    gfx.lineStyle(3, 0xffffff, 1);
     gfx.strokeRect(10, sixTop, sixW, sixH);
 
     // Away 6-yard box
     gfx.strokeRect(W - 10 - sixW, sixTop, sixW, sixH);
 
-    // Home goal
+    // Goals with posts and net outline
     const goalH = scene.GOAL_HEIGHT;
     const goalTop = cy - goalH / 2;
+    const goalDepth = 28;
+
+    // Home goal (left side)
+    // Net area fill
+    gfx.fillStyle(0xffffff, 0.08);
+    gfx.fillRect(-goalDepth, goalTop, goalDepth, goalH);
+    // Goal posts (thick white lines)
     gfx.lineStyle(4, 0xffffff, 1);
-    // Goal posts
-    gfx.lineBetween(10, goalTop, 10, goalTop + goalH);
-    // Goal net area
-    gfx.fillStyle(0xffffff, 0.1);
-    gfx.fillRect(0, goalTop, 10, goalH);
+    gfx.lineBetween(10, goalTop, 10, goalTop + goalH);          // front bar
+    gfx.lineBetween(10, goalTop, 10 - goalDepth, goalTop);       // top post
+    gfx.lineBetween(10, goalTop + goalH, 10 - goalDepth, goalTop + goalH); // bottom post
+    gfx.lineBetween(10 - goalDepth, goalTop, 10 - goalDepth, goalTop + goalH); // back line
+    // Net grid lines
     gfx.lineStyle(1, 0xffffff, 0.4);
-    // Net lines
-    for (let y = goalTop; y < goalTop + goalH; y += 10) {
-      gfx.lineBetween(0, y, 10, y);
+    for (let y = goalTop; y <= goalTop + goalH; y += 10) {
+      gfx.lineBetween(-goalDepth, y, 10, y);
     }
-    for (let x = 0; x <= 10; x += 5) {
+    for (let x = -goalDepth; x <= 10; x += 7) {
       gfx.lineBetween(x, goalTop, x, goalTop + goalH);
     }
 
-    // Away goal
+    // Away goal (right side)
+    gfx.fillStyle(0xffffff, 0.08);
+    gfx.fillRect(W, goalTop, goalDepth, goalH);
     gfx.lineStyle(4, 0xffffff, 1);
     gfx.lineBetween(W - 10, goalTop, W - 10, goalTop + goalH);
-    gfx.fillStyle(0xffffff, 0.1);
-    gfx.fillRect(W - 10, goalTop, 10, goalH);
+    gfx.lineBetween(W - 10, goalTop, W - 10 + goalDepth, goalTop);
+    gfx.lineBetween(W - 10, goalTop + goalH, W - 10 + goalDepth, goalTop + goalH);
+    gfx.lineBetween(W - 10 + goalDepth, goalTop, W - 10 + goalDepth, goalTop + goalH);
     gfx.lineStyle(1, 0xffffff, 0.4);
-    for (let y = goalTop; y < goalTop + goalH; y += 10) {
-      gfx.lineBetween(W - 10, y, W, y);
+    for (let y = goalTop; y <= goalTop + goalH; y += 10) {
+      gfx.lineBetween(W - 10, y, W + goalDepth, y);
     }
-    for (let x = W - 10; x <= W; x += 5) {
+    for (let x = W - 10; x <= W + goalDepth; x += 7) {
       gfx.lineBetween(x, goalTop, x, goalTop + goalH);
     }
 
     // Penalty spots
     gfx.fillStyle(0xffffff, 1);
-    gfx.fillCircle(10 + 120, cy, 4); // home penalty spot
-    gfx.fillCircle(W - 10 - 120, cy, 4); // away penalty spot
+    gfx.fillCircle(10 + 120, cy, 4);
+    gfx.fillCircle(W - 10 - 120, cy, 4);
 
     // Corner arcs
-    gfx.lineStyle(2, 0xffffff, 0.8);
+    gfx.lineStyle(3, 0xffffff, 1);
     gfx.beginPath();
-    gfx.arc(10, 10, 20, 0, Math.PI / 2, false); // top-left
+    gfx.arc(10, 10, 20, 0, Math.PI / 2, false);
     gfx.strokePath();
     gfx.beginPath();
-    gfx.arc(W - 10, 10, 20, Math.PI / 2, Math.PI, false); // top-right
+    gfx.arc(W - 10, 10, 20, Math.PI / 2, Math.PI, false);
     gfx.strokePath();
     gfx.beginPath();
-    gfx.arc(10, H - 10, 20, -Math.PI / 2, 0, false); // bottom-left
+    gfx.arc(10, H - 10, 20, -Math.PI / 2, 0, false);
     gfx.strokePath();
     gfx.beginPath();
-    gfx.arc(W - 10, H - 10, 20, Math.PI, 3 * Math.PI / 2, false); // bottom-right
+    gfx.arc(W - 10, H - 10, 20, Math.PI, 3 * Math.PI / 2, false);
     gfx.strokePath();
 
     // Penalty arc (home)
+    gfx.lineStyle(3, 0xffffff, 1);
     gfx.beginPath();
     gfx.arc(10 + 120, cy, 70, -0.9, 0.9, false);
     gfx.strokePath();
@@ -117,40 +140,68 @@ export default class Pitch {
     gfx.beginPath();
     gfx.arc(W - 10 - 120, cy, 70, Math.PI - 0.9, Math.PI + 0.9, false);
     gfx.strokePath();
-
-    // Crowd/boundary background
-    const outerGfx = scene.add.graphics().setDepth(-1);
-    outerGfx.fillStyle(0x1a1a1a, 1);
-    outerGfx.fillRect(-100, -100, W + 200, H + 200);
-
-    // Crowd effect (simple colored blocks around pitch)
-    this.drawCrowd(scene, W, H, outerGfx);
   }
 
   drawCrowd(scene, W, H, gfx) {
-    const crowdColors = [0x8b0000, 0x00008b, 0x006400, 0x8b4513, 0x4b0082];
-    const crowdSize = 6;
-    const crowdRows = 6;
+    // Sensible Soccer style: dense, colorful crowd rows at top and bottom edges
+    const crowdColors = [
+      0xcc2222, 0x2255cc, 0x228833, 0xcc8822, 0x882288,
+      0xdd4444, 0x4477ee, 0x44aa55, 0xeeaa33, 0xaa44cc,
+      0xaa1111, 0x113399, 0x115522, 0xaa6611, 0x661188,
+    ];
+    const blockW = 5;
+    const blockH = 7;
+    const crowdRows = 10;
+    const crowdAreaH = crowdRows * blockH;
 
-    // Top crowd
+    // Top crowd strip
     for (let row = 0; row < crowdRows; row++) {
-      for (let col = 0; col < Math.floor((W + 200) / crowdSize); col++) {
-        const color = crowdColors[(col + row) % crowdColors.length];
-        const x = -100 + col * crowdSize + (row % 2) * (crowdSize / 2);
-        const y = -100 + row * crowdSize;
-        gfx.fillStyle(color, 0.8);
-        gfx.fillRect(x, y, crowdSize - 1, crowdSize - 1);
+      const brightness = 0.6 + (row / crowdRows) * 0.4; // darker at back, brighter at front
+      for (let col = 0; col < Math.floor((W + 400) / blockW); col++) {
+        const ci = (col * 3 + row * 7) % crowdColors.length;
+        const color = crowdColors[ci];
+        const x = -200 + col * blockW + (row % 2 === 0 ? blockW / 2 : 0);
+        const y = -200 + row * blockH;
+        gfx.fillStyle(color, brightness);
+        gfx.fillRect(x, y, blockW - 1, blockH - 1);
       }
     }
 
-    // Bottom crowd
+    // Bottom crowd strip
     for (let row = 0; row < crowdRows; row++) {
-      for (let col = 0; col < Math.floor((W + 200) / crowdSize); col++) {
-        const color = crowdColors[(col + row + 2) % crowdColors.length];
-        const x = -100 + col * crowdSize + (row % 2) * (crowdSize / 2);
-        const y = H + 10 + row * crowdSize;
-        gfx.fillStyle(color, 0.8);
-        gfx.fillRect(x, y, crowdSize - 1, crowdSize - 1);
+      const brightness = 0.6 + (row / crowdRows) * 0.4;
+      for (let col = 0; col < Math.floor((W + 400) / blockW); col++) {
+        const ci = (col * 5 + row * 3 + 4) % crowdColors.length;
+        const color = crowdColors[ci];
+        const x = -200 + col * blockW + (row % 2 === 0 ? 0 : blockW / 2);
+        const y = H + 10 + row * blockH;
+        gfx.fillStyle(color, brightness);
+        gfx.fillRect(x, y, blockW - 1, blockH - 1);
+      }
+    }
+
+    // Side crowd (left and right) — thinner
+    const sideCrowdRows = 6;
+    for (let row = 0; row < sideCrowdRows; row++) {
+      const brightness = 0.55 + (row / sideCrowdRows) * 0.35;
+      for (let col = 0; col < Math.floor((H + 200) / blockW); col++) {
+        const ci = (col * 2 + row * 11) % crowdColors.length;
+        const color = crowdColors[ci];
+        const x = -200 + row * blockH;
+        const y = -100 + col * blockW + (row % 2 === 0 ? blockW / 2 : 0);
+        gfx.fillStyle(color, brightness);
+        gfx.fillRect(x, y, blockH - 1, blockW - 1);
+      }
+    }
+    for (let row = 0; row < sideCrowdRows; row++) {
+      const brightness = 0.55 + (row / sideCrowdRows) * 0.35;
+      for (let col = 0; col < Math.floor((H + 200) / blockW); col++) {
+        const ci = (col * 4 + row * 9 + 2) % crowdColors.length;
+        const color = crowdColors[ci];
+        const x = W + 10 + row * blockH;
+        const y = -100 + col * blockW + (row % 2 === 0 ? 0 : blockW / 2);
+        gfx.fillStyle(color, brightness);
+        gfx.fillRect(x, y, blockH - 1, blockW - 1);
       }
     }
   }

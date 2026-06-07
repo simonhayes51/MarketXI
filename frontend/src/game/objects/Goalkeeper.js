@@ -2,31 +2,16 @@ import Player from './Player.js';
 
 export default class Goalkeeper extends Player {
   constructor(scene, x, y, side, teamData, number) {
-    super(scene, x, y, side, teamData, number, 'goalkeeper');
+    super(scene, x, y, side, teamData, number, 'goalkeeper', `gk_${side}`);
 
     this.homeX = x;
     this.homeY = y;
-    this.speed = 120; // GK slightly slower
+    this.speed = 130;
     this.diveRange = 100;
     this.saveRadius = 25;
     this.divingState = false;
     this.diveTarget = null;
     this.diveCooldown = 0;
-
-    // Override with GK specific color (bright yellow kit)
-    const gfx = scene.make.graphics({ x: 0, y: 0, add: false });
-    gfx.fillStyle(0xffd700, 1);
-    gfx.fillCircle(10, 10, 10);
-    gfx.lineStyle(3, 0x000000, 1);
-    gfx.strokeCircle(10, 10, 10);
-    // GK marker cross
-    gfx.lineStyle(2, 0x000000, 0.8);
-    gfx.lineBetween(5, 10, 15, 10);
-    gfx.lineBetween(10, 5, 10, 15);
-    gfx.generateTexture(`gk_${side}`, 20, 20);
-    gfx.destroy();
-
-    this.sprite.setTexture(`gk_${side}`);
   }
 
   update(delta, ball) {
@@ -97,7 +82,6 @@ export default class Goalkeeper extends Player {
       goalCenterY + trackRange
     );
 
-    // Move toward goal line position
     const targetX = goalLineX;
 
     // Only move if significantly off position

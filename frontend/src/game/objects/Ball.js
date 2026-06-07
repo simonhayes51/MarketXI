@@ -4,26 +4,11 @@ export default class Ball {
     this.lastTouched = null;
     this.isShotOnGoal = false;
 
-    // Create ball graphic
-    const gfx = scene.make.graphics({ x: 0, y: 0, add: false });
-
-    // Ball body
-    gfx.fillStyle(0xffffff, 1);
-    gfx.fillCircle(8, 8, 8);
-
-    // Pentagon patches (black)
-    gfx.fillStyle(0x111111, 1);
-    gfx.fillTriangle(8, 2, 4, 7, 12, 7);
-    gfx.fillTriangle(2, 11, 7, 15, 5, 6);
-    gfx.fillTriangle(14, 11, 9, 15, 11, 6);
-
-    gfx.generateTexture('ball_tex', 16, 16);
-    gfx.destroy();
-
     // Shadow
     this.shadow = scene.add.ellipse(x, y + 4, 14, 6, 0x000000, 0.3).setDepth(4);
 
-    this.sprite = scene.physics.add.sprite(x, y, 'ball_tex')
+    // Use pre-generated 'ball' texture from MatchScene.generateTeamTextures()
+    this.sprite = scene.physics.add.sprite(x, y, 'ball')
       .setCircle(7, 1, 1)
       .setCollideWorldBounds(false)
       .setDragX(120)
@@ -73,7 +58,6 @@ export default class Ball {
     if (Math.abs(this.spin) > 0.5) {
       const speed = this.getSpeed();
       if (speed > 20) {
-        // Spin perpendicular to velocity
         const vx = this.sprite.body.velocity.x;
         const vy = this.sprite.body.velocity.y;
         const len = Math.sqrt(vx * vx + vy * vy);

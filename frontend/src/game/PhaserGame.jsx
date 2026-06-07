@@ -6,22 +6,25 @@ export default function PhaserGame({ homeTeam, awayTeam, matchDuration, vsAI, di
   const gameContainerRef = useRef(null);
   const gameRef = useRef(null);
   const navigate = useNavigate();
-
   const [score, setScore] = useState({ home: 0, away: 0 });
   const [timeRemaining, setTimeRemaining] = useState((matchDuration || 5) * 60);
   const [matchOver, setMatchOver] = useState(false);
   const [matchResult, setMatchResult] = useState(null);
 
   useEffect(() => {
+    // Store config globally so MatchScene can read it
+    window.__MATCH_CONFIG__ = {
+      homeTeam: homeTeam || { primaryColor: '#EF0107', secondaryColor: '#FFFFFF', name: 'Arsenal', shortName: 'ARS', rating: 85 },
+      awayTeam: awayTeam || { primaryColor: '#034694', secondaryColor: '#FFFFFF', name: 'Chelsea', shortName: 'CHE', rating: 82 },
+      matchDuration: matchDuration || 5,
+      vsAI: vsAI !== false,
+      difficulty: difficulty || 'medium',
+    };
+
     let game = null;
 
     const initPhaser = async () => {
-      // Dynamic import of Phaser to avoid SSR issues
       const Phaser = await import('phaser');
-
-      // Import scenes
-      const { default: BootScene } = await import('./scenes/BootScene.js');
-      const { default: PreloadScene } = await import('./scenes/PreloadScene.js');
       const { default: MatchScene } = await import('./scenes/MatchScene.js');
 
       const config = {
@@ -29,114 +32,48 @@ export default function PhaserGame({ homeTeam, awayTeam, matchDuration, vsAI, di
         parent: gameContainerRef.current,
         width: window.innerWidth,
         height: window.innerHeight,
-        backgroundColor: '#0a1a0a',
+        backgroundColor: '#1a6b1a',
         physics: {
           default: 'arcade',
-          arcade: {
-            gravity: { y: 0 },
-            debug: false,
-          },
+          arcade: { gravity: { y: 0 }, debug: false },
         },
-        scene: [BootScene, PreloadScene, MatchScene],
+        scene: [MatchScene],
         scale: {
           mode: Phaser.Scale.FIT,
           autoCenter: Phaser.Scale.CENTER_BOTH,
-          width: window.innerWidth,
-          height: window.innerHeight,
         },
-        render: {
-          pixelArt: true,
-          antialias: false,
-        },
+        render: { pixelArt: true, antialias: false },
       };
 
       game = new Phaser.Game(config);
       gameRef.current = game;
 
-      // Pass data to the scene after it's created
-      game.events.once('ready', () => {
-        // Start match scene with game config
+      // Wait for MatchScene to be active, then wire events
+      const waitForScene = setInterval(() => {
         const scene = game.scene.getScene('MatchScene');
-        if (scene) {
-          scene.scene.restart({
-            homeTeam,
-            awayTeam,
-            matchDuration: matchDuration || 5,
-            vsAI: vsAI !== false,
-            difficulty: difficulty || 'medium',
-          });
+        if (scene && scene.sys.isActive()) {
+          clearInterval(waitForScene);
+          scene.events.on('scoreUpdate', (s) => setScore({ ...s }));
+          scene.events.on('timeUpdate', (t) => setTimeRemaining(t));
+          scene.events.on('matchEnd', (r) => { setMatchOver(true); setMatchResult(r); });
         }
-      });
-
-      // Listen to scene events via the game's event system
-      game.events.on('ready', () => {
-        setupSceneListeners(game);
-      });
-    };
-
-    const setupSceneListeners = (game) => {
-      const checkScene = setInterval(() => {
-        const matchScene = game.scene.getScene('MatchScene');
-        if (matchScene && matchScene.sys.isActive()) {
-          clearInterval(checkScene);
-
-          matchScene.events.on('scoreUpdate', (newScore) => {
-            setScore({ ...newScore });
-          });
-
-          matchScene.events.on('timeUpdate', (time) => {
-            setTimeRemaining(time);
-          });
-
-          matchScene.events.on('matchEnd', (result) => {
-            setMatchOver(true);
-            setMatchResult(result);
-          });
-        }
-      }, 500);
+      }, 200);
     };
 
     initPhaser();
 
-    // Handle resize
     const handleResize = () => {
       if (gameRef.current) {
         gameRef.current.scale.resize(window.innerWidth, window.innerHeight);
       }
     };
-
     window.addEventListener('resize', handleResize);
 
     return () => {
       window.removeEventListener('resize', handleResize);
-      if (gameRef.current) {
-        gameRef.current.destroy(true);
-        gameRef.current = null;
-      }
+      if (gameRef.current) { gameRef.current.destroy(true); gameRef.current = null; }
     };
   }, []);
-
-  // Start scene with team data once Phaser is ready
-  useEffect(() => {
-    if (!gameRef.current) return;
-
-    const tryStart = () => {
-      const matchScene = gameRef.current?.scene?.getScene('MatchScene');
-      if (matchScene) {
-        matchScene.scene.restart({
-          homeTeam,
-          awayTeam,
-          matchDuration: matchDuration || 5,
-          vsAI: vsAI !== false,
-          difficulty: difficulty || 'medium',
-        });
-      }
-    };
-
-    // Give Phaser a moment to initialize scenes
-    const timeout = setTimeout(tryStart, 2000);
-    return () => clearTimeout(timeout);
-  }, [homeTeam, awayTeam, matchDuration, vsAI, difficulty]);
 
   return (
     <div style={{
@@ -246,10 +183,11 @@ function ControlsReminder() {
         CONTROLS
       </div>
       <div style={{ fontSize: '0.38rem', color: '#aaa', lineHeight: 2.2 }}>
-        <div>WASD / ARROWS - MOVE PLAYER</div>
-        <div>Q - PASS · E (hold) - SHOOT</div>
-        <div>R - THROUGH BALL</div>
-        <div>SPACE - SLIDE TACKLE</div>
+        <div>ARROWS - MOVE PLAYER</div>
+        <div>Z - PASS</div>
+        <div>X (hold) - SHOOT</div>
+        <div>C - THROUGH BALL</div>
+        <div>SPACE - TACKLE</div>
         <div>TAB - SWITCH PLAYER</div>
       </div>
       <div style={{ fontSize: '0.3rem', color: 'rgba(255,255,255,0.3)', marginTop: '12px' }}>
