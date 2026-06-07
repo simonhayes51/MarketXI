@@ -51,33 +51,50 @@ export default class MatchScene extends Phaser.Scene {
       const border = side === 'home' ? secondary : primary;
       const dot    = side === 'home' ? secondary : primary;
 
-      // Player "from-above" sprite: oval body + circular head
+      // Top-down humanoid player sprite (22×28 px, SS-inspired)
       const pg = this.make.graphics({ add: false });
-      // Body (kit color oval)
-      pg.fillStyle(fill, 1);
-      pg.fillEllipse(11, 16, 16, 20);
-      // Head (small circle at top)
-      pg.fillStyle(0xf4c080, 1);
+      // Dark hair circle (depth cue behind head)
+      pg.fillStyle(0x1a1000, 1);
+      pg.fillCircle(11, 7, 6);
+      // Face / head (skin tone)
+      pg.fillStyle(0xf0b880, 1);
       pg.fillCircle(11, 6, 5);
-      // Kit border
+      // Shoulders — wide ellipse in kit colour
+      pg.fillStyle(fill, 1);
+      pg.fillEllipse(11, 16, 20, 10);
+      // Lower torso / hips
+      pg.fillEllipse(11, 23, 15, 11);
+      // Shoulder outline in secondary colour
       pg.lineStyle(2, border, 1);
-      pg.strokeEllipse(11, 16, 16, 20);
-      // Team dot (small colored dot on chest)
+      pg.strokeEllipse(11, 16, 20, 10);
+      // Team badge dot (chest)
       pg.fillStyle(dot, 1);
-      pg.fillCircle(11, 14, 3);
+      pg.fillCircle(11, 15, 3);
+      // Shorts / legs (dark navy, two small ovals)
+      pg.fillStyle(0x1a1a3a, 0.85);
+      pg.fillEllipse(8, 26, 9, 6);
+      pg.fillEllipse(14, 26, 9, 6);
       pg.generateTexture(`player_${side}`, 22, 28);
       pg.destroy();
 
-      // Goalkeeper texture (yellow kit always)
+      // Goalkeeper — lime-green kit with white gloves
       const gkG = this.make.graphics({ add: false });
-      gkG.fillStyle(0xffd700, 1);
-      gkG.fillEllipse(11, 16, 16, 20);
-      gkG.fillStyle(0xf4c080, 1);
+      gkG.fillStyle(0x1a1000, 1);
+      gkG.fillCircle(11, 7, 6);
+      gkG.fillStyle(0xf0b880, 1);
       gkG.fillCircle(11, 6, 5);
+      gkG.fillStyle(0x88dd00, 1); // bright lime green
+      gkG.fillEllipse(11, 16, 20, 10);
+      gkG.fillEllipse(11, 23, 15, 11);
       gkG.lineStyle(2, 0x000000, 1);
-      gkG.strokeEllipse(11, 16, 16, 20);
-      gkG.fillStyle(0x000000, 1);
-      gkG.fillCircle(11, 14, 2);
+      gkG.strokeEllipse(11, 16, 20, 10);
+      // White gloves on each side
+      gkG.fillStyle(0xffffff, 1);
+      gkG.fillCircle(2, 16, 4);
+      gkG.fillCircle(20, 16, 4);
+      gkG.fillStyle(0x1a1a3a, 0.85);
+      gkG.fillEllipse(8, 26, 9, 6);
+      gkG.fillEllipse(14, 26, 9, 6);
       gkG.generateTexture(`gk_${side}`, 22, 28);
       gkG.destroy();
     });
@@ -125,10 +142,14 @@ export default class MatchScene extends Phaser.Scene {
     this.timeRemaining  = this.matchDuration;
     this.gamePhase      = 'kickoff';
     this.halfTime       = false;
-    this.shootPower     = 0;
-    this.isCharging     = false;
-    this.shootChargeTime = 0;
-    this.controlledPlayer = null;
+    this.shootPower        = 0;
+    this.isCharging        = false;
+    this.shootChargeTime   = 0;
+    this.controlledPlayer  = null;
+    this.autoSwitchCooldown = 0;
+    // After-touch: steer ball briefly after a shot (signature Sensible Soccer mechanic)
+    this.afterTouchActive   = false;
+    this.afterTouchDuration = 0;
 
     // POSSESSION — the fundamental mechanic
     // When set, the ball follows this player each frame
@@ -147,7 +168,8 @@ export default class MatchScene extends Phaser.Scene {
       this.PITCH_X, this.PITCH_Y,
       this.PITCH_WIDTH, this.PITCH_HEIGHT
     );
-    this.cameras.main.setZoom(1.5);
+    const zoom = window.innerWidth < 600 ? 1.0 : 1.5;
+    this.cameras.main.setZoom(zoom);
     this.cameras.main.centerOn(this.PITCH_WIDTH / 2, this.PITCH_HEIGHT / 2);
 
     // Generate all textures FIRST before creating any game objects
@@ -423,14 +445,25 @@ export default class MatchScene extends Phaser.Scene {
     if (this.gamePhase === 'fulltime') return;
 
     // Tick cooldowns
-    if (this.tackleCooldown > 0)       this.tackleCooldown -= delta;
+    if (this.tackleCooldown > 0)        this.tackleCooldown -= delta;
     if (this.possessionGracePeriod > 0) this.possessionGracePeriod -= delta;
+    if (this.autoSwitchCooldown > 0)    this.autoSwitchCooldown -= delta;
 
     // Ball: follow possessor or run own physics
     if (this.ballPossessor) {
+      this.afterTouchActive = false; // can't steer when someone holds it
       this.updateBallWithPossessor();
     } else {
       this.ball.update(delta);
+      // After-touch — steer the ball briefly after a shot (SS signature mechanic)
+      if (this.afterTouchActive) {
+        this.afterTouchDuration -= delta;
+        if (this.afterTouchDuration <= 0) {
+          this.afterTouchActive = false;
+        } else {
+          this.applyAfterTouch(delta);
+        }
+      }
     }
 
     // Player updates
@@ -485,6 +518,8 @@ export default class MatchScene extends Phaser.Scene {
     const player = this.controlledPlayer;
     if (!player) return;
 
+    const gi = window.__GAME_INPUT__ || {};
+
     // ── Movement ──
     let vx = 0;
     let vy = 0;
@@ -495,10 +530,10 @@ export default class MatchScene extends Phaser.Scene {
     if (ctrl.up.isDown)    vy -= spd;
     if (ctrl.down.isDown)  vy += spd;
 
-    // Mobile joystick override
-    if (this.mobileJoystick?.active) {
-      vx = this.mobileJoystick.dx * spd;
-      vy = this.mobileJoystick.dy * spd;
+    // Mobile joystick overrides keyboard when active
+    if (gi.jActive) {
+      vx = gi.jx * spd;
+      vy = gi.jy * spd;
     }
 
     // Diagonal normalise
@@ -508,15 +543,13 @@ export default class MatchScene extends Phaser.Scene {
 
     // ── Actions ──
     const hasBall = this.ballPossessor === player;
-
-    // If we don't have the ball but are within 35px, grab it first (makes actions feel responsive)
     const distToBall = Phaser.Math.Distance.Between(player.x, player.y, this.ball.x, this.ball.y);
     const canAct = hasBall || (distToBall < 35 && this.possessionGracePeriod <= 0 &&
       (!this.ballPossessor || this.ballPossessor.side === 'home'));
 
-    // Pass (Z)
-    if (Phaser.Input.Keyboard.JustDown(ctrl.pass_key) || this.mobileBtnPass) {
-      this.mobileBtnPass = false;
+    // Pass (Z / mobile)
+    if (Phaser.Input.Keyboard.JustDown(ctrl.pass_key) || gi.pass) {
+      if (gi) gi.pass = false;
       if (canAct) {
         if (!hasBall) this.setBallPossessor(player);
         this.doPass(player);
@@ -524,7 +557,7 @@ export default class MatchScene extends Phaser.Scene {
     }
 
     // Shoot (X — hold to charge, release to shoot)
-    if (ctrl.shoot_key.isDown || this.mobileShootHeld) {
+    if (ctrl.shoot_key.isDown || gi.shootHeld) {
       if (!this.isCharging) {
         this.isCharging = true;
         this.shootChargeTime = 0;
@@ -544,31 +577,33 @@ export default class MatchScene extends Phaser.Scene {
       this.shootChargeTime = 0;
     }
 
-    // Mobile shoot button (tap = instant shot, no hold needed)
-    if (this.mobileBtnShoot) {
-      this.mobileBtnShoot = false;
+    // Mobile tap-shoot (released without holding = one-shot at ~0.8 power)
+    if (gi.shoot) {
+      if (gi) gi.shoot = false;
       if (canAct) {
         if (!hasBall) this.setBallPossessor(player);
         this.doShoot(player, 0.80);
       }
     }
 
-    // Through ball (C)
-    if (Phaser.Input.Keyboard.JustDown(ctrl.through_key) || this.mobileBtnThrough) {
-      this.mobileBtnThrough = false;
+    // Through ball (C / mobile)
+    if (Phaser.Input.Keyboard.JustDown(ctrl.through_key) || gi.through) {
+      if (gi) gi.through = false;
       if (canAct) {
         if (!hasBall) this.setBallPossessor(player);
         this.doThroughBall(player);
       }
     }
 
-    // Tackle (Space) — always try regardless of possession
-    if (Phaser.Input.Keyboard.JustDown(ctrl.tackle_key)) {
+    // Tackle (Space / mobile)
+    if (Phaser.Input.Keyboard.JustDown(ctrl.tackle_key) || gi.tackle) {
+      if (gi) gi.tackle = false;
       this.doTackle(player);
     }
 
-    // Switch player (Tab)
-    if (Phaser.Input.Keyboard.JustDown(ctrl.switch_key)) {
+    // Switch player (Tab / mobile)
+    if (Phaser.Input.Keyboard.JustDown(ctrl.switch_key) || gi.switchPlayer) {
+      if (gi) gi.switchPlayer = false;
       this.manualSwitchPlayer();
     }
   }
@@ -643,7 +678,35 @@ export default class MatchScene extends Phaser.Scene {
     this.ball.lastTouched = player;
     this.ball.isShotOnGoal = true;
 
+    // Enable after-touch steering (700ms window — SS signature mechanic)
+    this.afterTouchActive   = true;
+    this.afterTouchDuration = 700;
+
     this.cameras.main.shake(120, 0.005);
+  }
+
+  applyAfterTouch(delta) {
+    const gi   = window.__GAME_INPUT__ || {};
+    const ctrl = this.controls;
+
+    let fx = 0, fy = 0;
+    const force = 360; // steering force (pixels/sec²)
+
+    if (ctrl.left.isDown)  fx -= force;
+    if (ctrl.right.isDown) fx += force;
+    if (ctrl.up.isDown)    fy -= force;
+    if (ctrl.down.isDown)  fy += force;
+
+    if (gi.jActive) {
+      if (Math.abs(gi.jx) > 0.2) fx = gi.jx * force;
+      if (Math.abs(gi.jy) > 0.2) fy = gi.jy * force;
+    }
+
+    if ((fx !== 0 || fy !== 0) && this.ball.sprite.body) {
+      const fade = this.afterTouchDuration / 700; // weakens as time expires
+      this.ball.sprite.body.velocity.x += fx * fade * (delta / 1000);
+      this.ball.sprite.body.velocity.y += fy * fade * (delta / 1000);
+    }
   }
 
   doTackle(player) {
@@ -690,15 +753,19 @@ export default class MatchScene extends Phaser.Scene {
   autoSwitchPlayer() {
     if (!this.controlledPlayer) return;
 
-    // If a home outfield player has possession, always switch to them
+    // If a home outfield player just gained possession, switch to them immediately
     if (this.ballPossessor?.side === 'home' && this.ballPossessor !== this.homePlayerList[0]) {
       if (this.ballPossessor !== this.controlledPlayer) {
         this.setControlledPlayer(this.ballPossessor);
+        this.autoSwitchCooldown = 600;
       }
       return;
     }
 
-    // Ball is loose or away team has it — switch to nearest home outfield player
+    // Ball is loose or away team has it — switch to nearest home outfield player,
+    // but use a cooldown so the selection doesn't thrash every frame.
+    if (this.autoSwitchCooldown > 0) return;
+
     const ballX = this.ball.x;
     const ballY = this.ball.y;
     let nearest = null;
@@ -710,9 +777,9 @@ export default class MatchScene extends Phaser.Scene {
       if (d < minDist) { minDist = d; nearest = p; }
     });
 
-    // Always switch to whoever is nearest — no threshold
     if (nearest && nearest !== this.controlledPlayer) {
       this.setControlledPlayer(nearest);
+      this.autoSwitchCooldown = 800;
     }
   }
 
@@ -953,74 +1020,10 @@ export default class MatchScene extends Phaser.Scene {
   }
 
   // ─── MOBILE CONTROLS ─────────────────────────────────────────────────────
-
+  // Controls are handled by the React MobileControls overlay in PhaserGame.jsx.
+  // They communicate via window.__GAME_INPUT__ which handleInput() reads.
   setupMobileControls() {
-    this.mobileJoystick   = { active: false, startX: 0, startY: 0, dx: 0, dy: 0, pointerId: -1 };
-    this.mobileBtnPass    = false;
-    this.mobileBtnShoot   = false;
-    this.mobileBtnThrough = false;
-    this.mobileShootHeld  = false;
-
-    const W = this.scale.width;
-    const H = this.scale.height;
-
-    // Joystick
-    this.joystickBase  = this.add.circle(100, H - 110, 55, 0x000000, 0.35).setScrollFactor(0).setDepth(600);
-    this.joystickThumb = this.add.circle(100, H - 110, 26, 0xffffff, 0.55).setScrollFactor(0).setDepth(601);
-
-    // Action buttons
-    const btnText = { fontFamily: 'monospace', fontSize: '10px', color: '#ffffff' };
-
-    const passBtn = this.add.circle(W - 150, H - 75, 34, 0x007700, 0.85).setScrollFactor(0).setDepth(600).setInteractive();
-    this.add.text(W - 150, H - 75, 'PASS\n(Z)', btnText).setOrigin(0.5).setScrollFactor(0).setDepth(601);
-    passBtn.on('pointerdown', () => { this.mobileBtnPass = true; });
-
-    const shootBtn = this.add.circle(W - 75, H - 140, 34, 0xaa0000, 0.85).setScrollFactor(0).setDepth(600).setInteractive();
-    this.add.text(W - 75, H - 140, 'SHOOT\n(X)', btnText).setOrigin(0.5).setScrollFactor(0).setDepth(601);
-    shootBtn.on('pointerdown', () => { this.mobileShootHeld = true; });
-    shootBtn.on('pointerup',   () => { this.mobileBtnShoot = true; this.mobileShootHeld = false; });
-
-    const thrBtn = this.add.circle(W - 75, H - 58, 34, 0x003399, 0.85).setScrollFactor(0).setDepth(600).setInteractive();
-    this.add.text(W - 75, H - 58, 'THRU\n(C)', btnText).setOrigin(0.5).setScrollFactor(0).setDepth(601);
-    thrBtn.on('pointerdown', () => { this.mobileBtnThrough = true; });
-
-    // Joystick pointer handling
-    this.input.on('pointerdown', (ptr) => {
-      if (ptr.x < W / 2 && !this.mobileJoystick.active) {
-        this.mobileJoystick.active = true;
-        this.mobileJoystick.pointerId = ptr.id;
-        this.mobileJoystick.startX = ptr.x;
-        this.mobileJoystick.startY = ptr.y;
-        this.joystickBase.setPosition(ptr.x, ptr.y);
-        this.joystickThumb.setPosition(ptr.x, ptr.y);
-      }
-    });
-
-    this.input.on('pointermove', (ptr) => {
-      if (this.mobileJoystick.active && ptr.id === this.mobileJoystick.pointerId) {
-        const dx   = ptr.x - this.mobileJoystick.startX;
-        const dy   = ptr.y - this.mobileJoystick.startY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const max  = 48;
-        const clamped = Math.min(dist, max);
-        const angle   = Math.atan2(dy, dx);
-        this.mobileJoystick.dx = (clamped / max) * Math.cos(angle);
-        this.mobileJoystick.dy = (clamped / max) * Math.sin(angle);
-        this.joystickThumb.setPosition(
-          this.mobileJoystick.startX + Math.cos(angle) * clamped,
-          this.mobileJoystick.startY + Math.sin(angle) * clamped
-        );
-      }
-    });
-
-    this.input.on('pointerup', (ptr) => {
-      if (ptr.id === this.mobileJoystick.pointerId) {
-        this.mobileJoystick.active = false;
-        this.mobileJoystick.dx = 0;
-        this.mobileJoystick.dy = 0;
-        this.joystickThumb.setPosition(this.joystickBase.x, this.joystickBase.y);
-      }
-    });
+    // No-op — kept so call site doesn't break
   }
 
   shutdown() {
