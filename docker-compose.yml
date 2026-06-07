@@ -1,32 +1,41 @@
+version: '3.8'
+
 services:
-  db:
-    image: postgres:16
+  postgres:
+    image: postgres:15-alpine
     environment:
-      POSTGRES_USER: marketxi
-      POSTGRES_PASSWORD: marketxi
       POSTGRES_DB: marketxi
+      POSTGRES_USER: marketxi
+      POSTGRES_PASSWORD: marketxi_password
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
 
-  api:
+  backend:
     build: ./backend
-    env_file:
-      - ./.env
-    depends_on:
-      - db
     ports:
-      - "8000:8000"
-
-  web:
-    build: ./frontend
+      - "3001:3001"
     environment:
-      VITE_API_URL: http://localhost:8000
+      DATABASE_URL: postgresql://marketxi:marketxi_password@postgres:5432/marketxi
+      JWT_SECRET: your_jwt_secret_change_me
+      PORT: 3001
     depends_on:
-      - api
+      - postgres
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+
+  frontend:
+    build: ./frontend
     ports:
       - "5173:5173"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
 
 volumes:
-  pgdata:
+  postgres_data:

@@ -1,0 +1,139 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+:root {
+  --green-dark: #0a2e0a;
+  --green-mid: #1a5c1a;
+  --green-pitch: #2d8a2d;
+  --green-light: #3daa3d;
+  --accent-yellow: #ffd700;
+  --accent-red: #ff3333;
+  --accent-blue: #3399ff;
+  --white: #ffffff;
+  --black: #000000;
+  --ui-bg: rgba(0, 0, 0, 0.85);
+  --border-color: #ffd700;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: #0a0a0a;
+  color: var(--white);
+  font-family: 'Press Start 2P', monospace;
+  overflow: hidden;
+  user-select: none;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+}
+
+.pixel-btn {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.7rem;
+  padding: 12px 24px;
+  border: 3px solid var(--border-color);
+  background: var(--ui-bg);
+  color: var(--accent-yellow);
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  transition: all 0.1s;
+  image-rendering: pixelated;
+  clip-path: polygon(
+    0 4px, 4px 4px, 4px 0,
+    calc(100% - 4px) 0, calc(100% - 4px) 4px, 100% 4px,
+    100% calc(100% - 4px), calc(100% - 4px) calc(100% - 4px),
+    calc(100% - 4px) 100%, 4px 100%, 4px calc(100% - 4px),
+    0 calc(100% - 4px)
+  );
+}
+
+.pixel-btn:hover {
+  background: var(--accent-yellow);
+  color: var(--black);
+  transform: scale(1.02);
+}
+
+.pixel-btn:active {
+  transform: scale(0.98);
+}
+
+.screen-container {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.scanlines {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.1) 2px,
+    rgba(0, 0, 0, 0.1) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* Animated pitch background */
+.pitch-bg {
+  position: absolute;
+  top: 0; left: 0;
+  width: 200%;
+  height: 100%;
+  background: repeating-linear-gradient(
+    90deg,
+    #1a4d1a 0px,
+    #1a4d1a 60px,
+    #1e561e 60px,
+    #1e561e 120px
+  );
+  animation: scrollPitch 8s linear infinite;
+}
+
+@keyframes scrollPitch {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+.title-glow {
+  text-shadow:
+    0 0 10px var(--accent-yellow),
+    0 0 20px var(--accent-yellow),
+    0 0 40px rgba(255, 215, 0, 0.5);
+}
+
+/* Score flash animation */
+@keyframes scoreFlash {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.score-flash {
+  animation: scoreFlash 0.3s ease 4;
+}
+
+/* Menu fade in */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+  animation: fadeIn 0.5s ease forwards;
+}

@@ -1,23 +1,47 @@
-# MarketXI (MVP)
+# MarketXI Football
 
-Creator-led FC trading subscriptions + feed + tools hooks.
+A browser-based football game inspired by Sensible Soccer 97/98, built with React, Phaser 3, Node.js, and PostgreSQL.
 
-## What you get (MVP)
-- Email/password auth (JWT)
-- Roles: user | trader | admin
-- Trader profiles (banner/avatar/bio/price/verified)
-- Posts (free/premium) with attached card trade ranges
-- Subscriptions (DB-backed; Stripe hook points included)
-- Discord connect stub (OAuth + role sync hook points)
-- React + Vite + Tailwind UI (feed, trader page, login/register)
+## Features
+- Fully playable football with 11v11 AI
+- Online multiplayer via Socket.io
+- Team selection (Premier League + Championship)
+- JWT authentication (email/password + Google OAuth)
+- ELO leaderboard
+- Mobile virtual controls
 
-## Quick start (Docker)
+## Setup
+
+### Backend
 ```bash
-docker compose up --build
+cd backend
+cp .env.example .env
+# Fill in DB credentials and JWT secret
+npm install
+npm start
 ```
 
-- Frontend: http://localhost:5173
-- Backend:  http://localhost:8000/docs
+### Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-### Environment
-Copy `.env.example` to `.env` and adjust if needed (Docker defaults work).
+### Database
+```bash
+psql -U postgres -f backend/db/schema.sql
+```
+
+### Docker
+```bash
+docker-compose up
+```
+
+## Controls
+- **Arrow keys / WASD**: Move player
+- **A**: Pass
+- **S**: Shoot (hold to charge)
+- **D**: Through ball
+- **Space**: Slide tackle
+- **Tab**: Switch player
