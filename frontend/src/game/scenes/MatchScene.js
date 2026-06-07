@@ -24,12 +24,81 @@ export default class MatchScene extends Phaser.Scene {
   }
 
   init(data) {
-    this.matchConfig = data || {};
-    this.homeTeam = data?.homeTeam || { primaryColor: '#EF0107', secondaryColor: '#FFFFFF', name: 'Home', shortName: 'HME', rating: 75 };
-    this.awayTeam = data?.awayTeam || { primaryColor: '#034694', secondaryColor: '#FFFFFF', name: 'Away', shortName: 'AWY', rating: 75 };
-    this.matchDuration = (data?.matchDuration || 5) * 60;
-    this.vsAI = data?.vsAI !== false;
-    this.difficulty = data?.difficulty || 'medium';
+    const cfg = (data && data.homeTeam) ? data : (window.__MATCH_CONFIG__ || {});
+    this.homeTeam = cfg.homeTeam || { primaryColor: '#EF0107', secondaryColor: '#FFFFFF', name: 'Arsenal', shortName: 'ARS', rating: 85 };
+    this.awayTeam = cfg.awayTeam || { primaryColor: '#034694', secondaryColor: '#FFFFFF', name: 'Chelsea', shortName: 'CHE', rating: 82 };
+    this.matchDuration = (cfg.matchDuration || 5) * 60;
+    this.vsAI = cfg.vsAI !== false;
+    this.difficulty = cfg.difficulty || 'medium';
+  }
+
+  generateTeamTextures() {
+    const teams = [
+      { team: this.homeTeam, side: 'home' },
+      { team: this.awayTeam, side: 'away' },
+    ];
+
+    teams.forEach(({ team, side }) => {
+      const parseHex = (hex) => {
+        const h = (hex || '#888888').replace('#', '');
+        return parseInt(h, 16);
+      };
+
+      const primary = parseHex(team.primaryColor);
+      const secondary = parseHex(team.secondaryColor);
+
+      const fill   = side === 'home' ? primary   : secondary;
+      const border = side === 'home' ? secondary : primary;
+      const dot    = side === 'home' ? secondary : primary;
+
+      // Player "from-above" sprite: oval body + circular head
+      const pg = this.make.graphics({ add: false });
+      // Body (kit color oval)
+      pg.fillStyle(fill, 1);
+      pg.fillEllipse(11, 16, 16, 20);
+      // Head (small circle at top)
+      pg.fillStyle(0xf4c080, 1);
+      pg.fillCircle(11, 6, 5);
+      // Kit border
+      pg.lineStyle(2, border, 1);
+      pg.strokeEllipse(11, 16, 16, 20);
+      // Team dot (small colored dot on chest)
+      pg.fillStyle(dot, 1);
+      pg.fillCircle(11, 14, 3);
+      pg.generateTexture(`player_${side}`, 22, 28);
+      pg.destroy();
+
+      // Goalkeeper texture (yellow kit always)
+      const gkG = this.make.graphics({ add: false });
+      gkG.fillStyle(0xffd700, 1);
+      gkG.fillEllipse(11, 16, 16, 20);
+      gkG.fillStyle(0xf4c080, 1);
+      gkG.fillCircle(11, 6, 5);
+      gkG.lineStyle(2, 0x000000, 1);
+      gkG.strokeEllipse(11, 16, 16, 20);
+      gkG.fillStyle(0x000000, 1);
+      gkG.fillCircle(11, 14, 2);
+      gkG.generateTexture(`gk_${side}`, 22, 28);
+      gkG.destroy();
+    });
+
+    // Ball texture
+    const bg = this.make.graphics({ add: false });
+    bg.fillStyle(0xffffff, 1);
+    bg.fillCircle(8, 8, 8);
+    bg.fillStyle(0x222222, 1);
+    bg.fillTriangle(8, 2, 3, 8, 13, 8);
+    bg.fillTriangle(2, 11, 7, 16, 4, 6);
+    bg.fillTriangle(14, 11, 9, 16, 12, 6);
+    bg.generateTexture('ball', 16, 16);
+    bg.destroy();
+
+    // Selection arrow texture (yellow downward pointing)
+    const ag = this.make.graphics({ add: false });
+    ag.fillStyle(0xffff00, 1);
+    ag.fillTriangle(8, 14, 0, 0, 16, 0);
+    ag.generateTexture('arrow', 16, 14);
+    ag.destroy();
   }
 
   create() {
@@ -78,8 +147,11 @@ export default class MatchScene extends Phaser.Scene {
       this.PITCH_X, this.PITCH_Y,
       this.PITCH_WIDTH, this.PITCH_HEIGHT
     );
-    this.cameras.main.setZoom(0.78);
+    this.cameras.main.setZoom(1.5);
     this.cameras.main.centerOn(this.PITCH_WIDTH / 2, this.PITCH_HEIGHT / 2);
+
+    // Generate all textures FIRST before creating any game objects
+    this.generateTeamTextures();
 
     this.pitch = new Pitch(this);
 
@@ -126,7 +198,7 @@ export default class MatchScene extends Phaser.Scene {
     this.setupMobileControls();
     this.setupHUD();
 
-    this.cameras.main.startFollow(this.ball.sprite, true, 0.08, 0.08);
+    this.cameras.main.startFollow(this.ball.sprite, true, 0.1, 0.1);
 
     this.aiController = new AIController(this, this.difficulty);
 
