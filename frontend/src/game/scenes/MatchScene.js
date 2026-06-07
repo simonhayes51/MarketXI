@@ -145,21 +145,24 @@ export default class MatchScene extends Phaser.Scene {
   // ─── POSSESSION ──────────────────────────────────────────────────────────
 
   setBallPossessor(player) {
+    // Clear dot on previous possessor
     if (this.ballPossessor && this.ballPossessor !== player) {
-      // Visual: old possessor loses indicator
+      this.ballPossessor.setPossession?.(false);
     }
     this.ballPossessor = player;
     if (player) {
       this.ball.lastTouched = player;
-      // Stop ball physics so it doesn't drift while held
       this.ball.sprite.body.setVelocity(0, 0);
+      player.setPossession?.(true);
     }
   }
 
   releasePossession() {
+    if (this.ballPossessor) {
+      this.ballPossessor.setPossession?.(false);
+    }
     this.ballPossessor = null;
-    // Brief grace period before ball can be picked up again (prevents instant re-possession after kick)
-    this.possessionGracePeriod = 250;
+    this.possessionGracePeriod = 280;
   }
 
   updateBallWithPossessor() {
@@ -181,8 +184,9 @@ export default class MatchScene extends Phaser.Scene {
       by = p.y + 10;
     }
 
-    this.ball.sprite.setPosition(bx, by);
-    this.ball.sprite.body.setVelocity(0, 0);
+    // Use body.reset() so the physics body position stays in sync with the sprite
+    // (setPosition alone can desync the body, breaking future overlaps/collisions)
+    this.ball.sprite.body.reset(bx, by);
     this.ball.shadow.setPosition(bx + 3, by + 6);
   }
 
@@ -347,7 +351,7 @@ export default class MatchScene extends Phaser.Scene {
     if (this.gamePhase === 'fulltime') return;
 
     // Tick cooldowns
-    if (this.tackleCooldown > 0) this.tackleCooldown -= delta;
+    if (this.tackleCooldown > 0)       this.tackleCooldown -= delta;
     if (this.possessionGracePeriod > 0) this.possessionGracePeriod -= delta;
 
     // Ball: follow possessor or run own physics
@@ -359,6 +363,28 @@ export default class MatchScene extends Phaser.Scene {
 
     // Player updates
     [...this.homePlayerList, ...this.awayPlayerList].forEach(p => p.update(delta, this.ball));
+
+    // Proximity-based possession — don't rely solely on physics overlap
+    // Any player within 20px of a loose ball gets it
+    if (!this.ballPossessor && this.possessionGracePeriod <= 0) {
+      const bx = this.ball.x;
+      const by = this.ball.y;
+      let closestPlayer = null;
+      let closestDist   = 22; // pickup radius
+
+      const allPlayers = [...this.homePlayerList, ...this.awayPlayerList];
+      allPlayers.forEach(p => {
+        const d = Phaser.Math.Distance.Between(p.x, p.y, bx, by);
+        if (d < closestDist) { closestDist = d; closestPlayer = p; }
+      });
+
+      if (closestPlayer) {
+        this.setBallPossessor(closestPlayer);
+        if (closestPlayer.side === 'home' && closestPlayer !== this.homePlayerList[0]) {
+          this.setControlledPlayer(closestPlayer);
+        }
+      }
+    }
 
     if (this.gamePhase === 'playing' || this.gamePhase === 'kickoff') {
       this.handleInput(delta);
@@ -411,10 +437,18 @@ export default class MatchScene extends Phaser.Scene {
     // ── Actions ──
     const hasBall = this.ballPossessor === player;
 
+    // If we don't have the ball but are within 35px, grab it first (makes actions feel responsive)
+    const distToBall = Phaser.Math.Distance.Between(player.x, player.y, this.ball.x, this.ball.y);
+    const canAct = hasBall || (distToBall < 35 && this.possessionGracePeriod <= 0 &&
+      (!this.ballPossessor || this.ballPossessor.side === 'home'));
+
     // Pass (Z)
     if (Phaser.Input.Keyboard.JustDown(ctrl.pass_key) || this.mobileBtnPass) {
       this.mobileBtnPass = false;
-      if (hasBall) this.doPass(player);
+      if (canAct) {
+        if (!hasBall) this.setBallPossessor(player);
+        this.doPass(player);
+      }
     }
 
     // Shoot (X — hold to charge, release to shoot)
@@ -430,26 +464,33 @@ export default class MatchScene extends Phaser.Scene {
     } else if (this.isCharging) {
       this.isCharging = false;
       this.hideShootPowerBar();
-      if (hasBall) {
+      if (canAct) {
+        if (!hasBall) this.setBallPossessor(player);
         this.doShoot(player, this.shootPower);
       }
       this.shootPower = 0;
       this.shootChargeTime = 0;
     }
 
-    // Mobile shoot button (tap = instant shot)
+    // Mobile shoot button (tap = instant shot, no hold needed)
     if (this.mobileBtnShoot) {
       this.mobileBtnShoot = false;
-      if (hasBall) this.doShoot(player, 0.85);
+      if (canAct) {
+        if (!hasBall) this.setBallPossessor(player);
+        this.doShoot(player, 0.80);
+      }
     }
 
     // Through ball (C)
     if (Phaser.Input.Keyboard.JustDown(ctrl.through_key) || this.mobileBtnThrough) {
       this.mobileBtnThrough = false;
-      if (hasBall) this.doThroughBall(player);
+      if (canAct) {
+        if (!hasBall) this.setBallPossessor(player);
+        this.doThroughBall(player);
+      }
     }
 
-    // Tackle (Space)
+    // Tackle (Space) — always try regardless of possession
     if (Phaser.Input.Keyboard.JustDown(ctrl.tackle_key)) {
       this.doTackle(player);
     }
@@ -577,37 +618,29 @@ export default class MatchScene extends Phaser.Scene {
   autoSwitchPlayer() {
     if (!this.controlledPlayer) return;
 
-    // If home player has possession, switch to them immediately
-    if (this.ballPossessor?.side === 'home' && this.ballPossessor !== this.controlledPlayer) {
-      // Only auto-switch if not GK
-      if (this.ballPossessor !== this.homePlayerList[0]) {
+    // If a home outfield player has possession, always switch to them
+    if (this.ballPossessor?.side === 'home' && this.ballPossessor !== this.homePlayerList[0]) {
+      if (this.ballPossessor !== this.controlledPlayer) {
         this.setControlledPlayer(this.ballPossessor);
-        return;
       }
+      return;
     }
 
-    // Ball is loose — switch to nearest home outfield player
-    if (!this.ballPossessor || this.ballPossessor.side === 'away') {
-      const ballX = this.ball.x;
-      const ballY = this.ball.y;
-      let nearest = null;
-      let minDist = Infinity;
+    // Ball is loose or away team has it — switch to nearest home outfield player
+    const ballX = this.ball.x;
+    const ballY = this.ball.y;
+    let nearest = null;
+    let minDist = Infinity;
 
-      this.homePlayerList.forEach((p, idx) => {
-        if (idx === 0) return; // skip GK
-        const d = Phaser.Math.Distance.Between(p.x, p.y, ballX, ballY);
-        if (d < minDist) { minDist = d; nearest = p; }
-      });
+    this.homePlayerList.forEach((p, idx) => {
+      if (idx === 0) return; // skip GK
+      const d = Phaser.Math.Distance.Between(p.x, p.y, ballX, ballY);
+      if (d < minDist) { minDist = d; nearest = p; }
+    });
 
-      if (nearest) {
-        const currentDist = Phaser.Math.Distance.Between(
-          this.controlledPlayer.x, this.controlledPlayer.y, ballX, ballY
-        );
-        // Switch if nearest is clearly closer (not just marginally)
-        if (minDist < currentDist - 50 && nearest !== this.controlledPlayer) {
-          this.setControlledPlayer(nearest);
-        }
-      }
+    // Always switch to whoever is nearest — no threshold
+    if (nearest && nearest !== this.controlledPlayer) {
+      this.setControlledPlayer(nearest);
     }
   }
 

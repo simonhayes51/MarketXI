@@ -4,69 +4,79 @@ export default class Player {
     this.side = side;
     this.teamData = teamData;
     this.number = number;
-    this.role = role; // defender, midfielder, forward, goalkeeper
+    this.role = role;
     this.isControlled = false;
 
-    // Player stats
-    this.speed = 150 + Math.random() * 40;
-    this.stamina = 1.0;
-    this.staminaDrain = 0.00005;
+    this.speed        = 155 + Math.random() * 35;
+    this.stamina      = 1.0;
+    this.staminaDrain = 0.00004;
 
-    // State
-    this.state = 'idle'; // idle, moving, dribbling, celebrating
-    this.aiState = 'position'; // position, press, support, attack
     this.homeX = x;
     this.homeY = y;
-    this.targetX = x;
-    this.targetY = y;
 
-    // Create sprite
-    const color = Phaser.Display.Color.HexStringToColor(
+    const primaryColor = Phaser.Display.Color.HexStringToColor(
       teamData.primaryColor.replace('#', '')
     ).color;
-    const borderColor = Phaser.Display.Color.HexStringToColor(
+
+    const secondaryColor = Phaser.Display.Color.HexStringToColor(
       teamData.secondaryColor.replace('#', '')
     ).color;
 
-    // Create circular player sprite
+    // Draw player circle
+    // Away team: inverted (secondary fill, primary border) so they're always visually distinct
+    const fillColor   = side === 'home' ? primaryColor   : secondaryColor;
+    const borderColor = side === 'home' ? secondaryColor : primaryColor;
+
+    const key = `player_${side}_${teamData.shortName}_${number}`;
     const gfx = scene.make.graphics({ x: 0, y: 0, add: false });
-    gfx.fillStyle(color, 1);
-    gfx.fillCircle(10, 10, 10);
-    gfx.lineStyle(2.5, borderColor, 1);
-    gfx.strokeCircle(10, 10, 10);
-    gfx.generateTexture(`player_${side}_${number}`, 20, 20);
+
+    // Slightly larger circle for away team so you can tell them apart at a glance
+    gfx.fillStyle(fillColor, 1);
+    gfx.fillCircle(11, 11, 11);
+    gfx.lineStyle(3, borderColor, 1);
+    gfx.strokeCircle(11, 11, 11);
+
+    // Away team: add a small cross/dot in primary color to distinguish
+    if (side === 'away') {
+      gfx.fillStyle(primaryColor, 1);
+      gfx.fillCircle(11, 11, 4);
+    }
+
+    gfx.generateTexture(key, 22, 22);
     gfx.destroy();
 
-    this.sprite = scene.physics.add.sprite(x, y, `player_${side}_${number}`)
-      .setCircle(8, 2, 2)
+    this.sprite = scene.physics.add.sprite(x, y, key)
+      .setCircle(9, 2, 2)
       .setCollideWorldBounds(true)
-      .setDragX(300)
-      .setDragY(300)
+      .setDragX(280)
+      .setDragY(280)
       .setDepth(10);
 
-    // Jersey number text
-    this.numberText = scene.add.text(x, y - 14, `${number}`, {
+    // Jersey number
+    this.numberText = scene.add.text(x, y - 16, `${number}`, {
       fontFamily: 'monospace',
       fontSize: '9px',
-      fill: '#ffffff',
-      stroke: '#000000',
+      color: side === 'home' ? '#ffffff' : '#000000',
+      stroke: side === 'home' ? '#000000' : '#ffffff',
       strokeThickness: 2,
     }).setOrigin(0.5).setDepth(11);
 
-    // Selection indicator (arrow above controlled player)
+    // Controlled-player indicator: bright yellow arrow above sprite
     this.selectionArrow = scene.add.triangle(
-      x, y - 22,
-      -6, 0, 6, 0, 0, -8,
-      side === 'home' ? 0xffffff : 0xffffff
+      x, y - 26,
+      -7, 0, 7, 0, 0, -9,
+      0xffff00, 1
     ).setDepth(12).setVisible(false);
+
+    // Ball-possession indicator: small white circle on player
+    this.possessionDot = scene.add.circle(x + 9, y - 9, 4, 0xffffff, 1)
+      .setDepth(13).setVisible(false);
   }
 
   get x() { return this.sprite.x; }
   get y() { return this.sprite.y; }
   get vx() { return this.sprite.body?.velocity.x || 0; }
   get vy() { return this.sprite.body?.velocity.y || 0; }
-  set vx(v) { if (this.sprite.body) this.sprite.body.velocity.x = v; }
-  set vy(v) { if (this.sprite.body) this.sprite.body.velocity.y = v; }
 
   setPosition(x, y) {
     this.sprite.setPosition(x, y);
@@ -77,37 +87,37 @@ export default class Player {
   setControlled(controlled) {
     this.isControlled = controlled;
     this.selectionArrow.setVisible(controlled);
-    if (controlled) {
-      // Highlight controlled player
-      this.sprite.setAlpha(1.0);
-      this.sprite.setScale(1.1);
-    } else {
-      this.sprite.setAlpha(0.95);
-      this.sprite.setScale(1.0);
-    }
+    this.sprite.setScale(controlled ? 1.15 : 1.0);
+  }
+
+  setPossession(hasBall) {
+    this.possessionDot.setVisible(hasBall);
   }
 
   setVelocity(vx, vy) {
-    this.sprite.body.setVelocity(vx, vy);
+    if (this.sprite.body) this.sprite.body.setVelocity(vx, vy);
   }
 
   update(delta, ball) {
-    // Sync text positions with sprite
-    this.numberText.setPosition(this.sprite.x, this.sprite.y - 14);
-    this.selectionArrow.setPosition(this.sprite.x, this.sprite.y - 24);
+    const sx = this.sprite.x;
+    const sy = this.sprite.y;
 
-    // Stamina drain when moving
-    const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-    if (speed > 10) {
+    this.numberText.setPosition(sx, sy - 16);
+    this.selectionArrow.setPosition(sx, sy - 27);
+    this.possessionDot.setPosition(sx + 9, sy - 9);
+
+    // Stamina
+    const spd = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+    if (spd > 10) {
       this.stamina = Math.max(0.5, this.stamina - this.staminaDrain * delta);
     }
 
-    // Keep within pitch bounds
-    const px = Phaser.Math.Clamp(this.sprite.x, 5, this.scene.PITCH_WIDTH - 5);
-    const py = Phaser.Math.Clamp(this.sprite.y, 5, this.scene.PITCH_HEIGHT - 5);
-    if (px !== this.sprite.x || py !== this.sprite.y) {
+    // Clamp within pitch
+    const px = Phaser.Math.Clamp(sx, 6, this.scene.PITCH_WIDTH  - 6);
+    const py = Phaser.Math.Clamp(sy, 6, this.scene.PITCH_HEIGHT - 6);
+    if (px !== sx || py !== sy) {
       this.sprite.setPosition(px, py);
-      this.sprite.body.setVelocity(0, 0);
+      if (this.sprite.body) this.sprite.body.setVelocity(0, 0);
     }
   }
 
@@ -117,21 +127,21 @@ export default class Player {
     const dist = Math.sqrt(dx * dx + dy * dy);
 
     if (dist < 8) {
-      this.sprite.body.setVelocity(0, 0);
-      return false; // reached
+      if (this.sprite.body) this.sprite.body.setVelocity(0, 0);
+      return false;
     }
 
-    const spd = this.speed * this.stamina * speedMultiplier;
-    this.sprite.body.setVelocity(
-      (dx / dist) * spd,
-      (dy / dist) * spd
-    );
-    return true; // still moving
+    const s = this.speed * this.stamina * speedMultiplier;
+    if (this.sprite.body) {
+      this.sprite.body.setVelocity((dx / dist) * s, (dy / dist) * s);
+    }
+    return true;
   }
 
   destroy() {
     this.sprite.destroy();
     this.numberText.destroy();
     this.selectionArrow.destroy();
+    this.possessionDot.destroy();
   }
 }
