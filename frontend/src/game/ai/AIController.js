@@ -1,114 +1,130 @@
-// AI Controller - state machine for away team players
 export default class AIController {
   constructor(scene, difficulty = 'medium') {
     this.scene = scene;
     this.difficulty = difficulty;
 
-    // Difficulty parameters
     const params = {
       easy: {
-        reactionDelay: 800,
-        passingAccuracy: 0.6,
-        shootingAccuracy: 0.5,
-        pressDistance: 120,
-        passFrequency: 0.4,
-        shootFrequency: 0.3,
-        speed: 0.75,
+        reactionDelay:    700,
+        passingAccuracy:  0.60,
+        shootingAccuracy: 0.50,
+        passFrequency:    0.40,
+        shootFrequency:   0.30,
+        speed:            0.78,
+        tackleRange:      28,
       },
       medium: {
-        reactionDelay: 400,
-        passingAccuracy: 0.78,
+        reactionDelay:    380,
+        passingAccuracy:  0.78,
         shootingAccuracy: 0.68,
-        pressDistance: 180,
-        passFrequency: 0.55,
-        shootFrequency: 0.5,
-        speed: 0.90,
+        passFrequency:    0.55,
+        shootFrequency:   0.50,
+        speed:            0.92,
+        tackleRange:      34,
       },
       hard: {
-        reactionDelay: 150,
-        passingAccuracy: 0.92,
-        shootingAccuracy: 0.82,
-        pressDistance: 250,
-        passFrequency: 0.70,
-        shootFrequency: 0.65,
-        speed: 1.05,
+        reactionDelay:    140,
+        passingAccuracy:  0.92,
+        shootingAccuracy: 0.83,
+        passFrequency:    0.72,
+        shootFrequency:   0.65,
+        speed:            1.06,
+        tackleRange:      42,
       },
     };
 
     this.params = params[difficulty] || params.medium;
-
-    // State per player: Map<player, {state, timer, target}>
     this.playerStates = new Map();
 
-    // Update timer
-    this.updateInterval = this.params.reactionDelay;
-    this.timeSinceUpdate = 0;
+    this.updateInterval   = this.params.reactionDelay;
+    this.timeSinceUpdate  = 0;
+
+    // Per-player decision cooldown so they don't spam pass/shoot
+    this.decisionTimers = new Map();
   }
 
   update(awayPlayers, homePlayers, ball, delta) {
-    this.timeSinceUpdate += delta;
+    const scene = this.scene;
 
-    // Only recalculate AI at set intervals (simulates reaction delay)
-    if (this.timeSinceUpdate < this.updateInterval) {
-      // Still move players toward their last target
-      awayPlayers.forEach((player, idx) => {
-        if (idx === 0) return; // GK handled separately
-        this.executeMoveToTarget(player);
-      });
-      return;
-    }
-
-    this.timeSinceUpdate = 0;
-
-    const ballX = ball.x;
-    const ballY = ball.y;
-    const ballVx = ball.sprite.body.velocity.x;
-    const ballVy = ball.sprite.body.velocity.y;
-    const ballSpeed = ball.getSpeed();
-
-    // Determine overall team state
-    const ballInAwayhalf = ballX > this.scene.PITCH_WIDTH / 2;
-    const teamInAttack = ballInAwayhalf;
-
-    // Find nearest away player to ball
-    let nearestPlayer = null;
-    let nearestDist = Infinity;
-
-    awayPlayers.forEach((p, idx) => {
-      if (idx === 0) return; // Skip GK
-      const d = Phaser.Math.Distance.Between(p.x, p.y, ballX, ballY);
-      if (d < nearestDist) {
-        nearestDist = d;
-        nearestPlayer = p;
-      }
+    // Tick decision timers
+    awayPlayers.forEach(p => {
+      const t = (this.decisionTimers.get(p) || 0) - delta;
+      this.decisionTimers.set(p, Math.max(0, t));
     });
 
-    const ballCarrier = ball.lastTouched;
-    const awayHasBall = ballCarrier && ballCarrier.side === 'away';
+    this.timeSinceUpdate += delta;
 
-    awayPlayers.forEach((player, idx) => {
-      if (idx === 0) return; // GK handled separately
+    // Always move players toward their targets each frame
+    awayPlayers.forEach((p, idx) => {
+      if (idx === 0) return;
+      this.executeMoveToTarget(p);
+    });
 
-      const dist = Phaser.Math.Distance.Between(player.x, player.y, ballX, ballY);
+    // Recalculate decisions at difficulty-gated intervals
+    if (this.timeSinceUpdate < this.updateInterval) return;
+    this.timeSinceUpdate = 0;
 
-      // State machine
-      if (awayHasBall) {
-        // Away team has possession
-        if (player === nearestPlayer || player === ballCarrier) {
-          // Ball carrier: try to pass, shoot, or dribble
-          this.handleBallCarrier(player, ball, awayPlayers, homePlayers);
-        } else {
-          // Support runners - make intelligent runs
-          this.handleSupportRun(player, idx, ball, teamInAttack);
+    const ballX  = ball.x;
+    const ballY  = ball.y;
+    const possessor = scene.ballPossessor;
+
+    // Try to pick up loose ball
+    if (!possessor) {
+      let nearest = null;
+      let minDist = Infinity;
+      awayPlayers.forEach((p, idx) => {
+        if (idx === 0) return;
+        const d = Phaser.Math.Distance.Between(p.x, p.y, ballX, ballY);
+        if (d < minDist) { minDist = d; nearest = p; }
+      });
+      if (nearest && minDist < this.params.tackleRange + 6) {
+        scene.setBallPossessor(nearest);
+      }
+    }
+
+    // Attempt tackle on home possessor
+    if (possessor && possessor.side === 'home') {
+      awayPlayers.forEach((p, idx) => {
+        if (idx === 0) return;
+        const d = Phaser.Math.Distance.Between(p.x, p.y, possessor.x, possessor.y);
+        if (d < this.params.tackleRange && scene.tackleCooldown <= 0) {
+          scene.releasePossession();
+          ball.kick((Math.random() - 0.5) * 160, (Math.random() - 0.5) * 160);
+          ball.lastTouched = p;
+          scene.tackleCooldown = 500;
         }
+      });
+    }
+
+    // Determine if away team has possession
+    const awayHasPossession = possessor?.side === 'away';
+    const ballInAwayhalf    = ballX > scene.PITCH_WIDTH / 2;
+
+    // Update GK separately
+    this.updateGoalkeeper(awayPlayers[0], ball, homePlayers);
+
+    // Update outfield players
+    awayPlayers.forEach((player, idx) => {
+      if (idx === 0) return;
+
+      if (scene.ballPossessor === player) {
+        // This player has the ball
+        if (this.decisionTimers.get(player) <= 0) {
+          this.handleBallCarrier(player, ball, awayPlayers, homePlayers);
+          this.decisionTimers.set(player, this.params.reactionDelay);
+        }
+        // Always dribble toward goal while holding
+        this.dribbleTowardGoal(player, ball);
+      } else if (awayHasPossession) {
+        this.handleSupportRun(player, idx, ball, true);
       } else {
-        // Defending/pressing
-        if (player === nearestPlayer) {
-          // Nearest player presses ball
-          this.pressPlayer(player, ballX, ballY, homePlayers);
+        const distToBall = Phaser.Math.Distance.Between(player.x, player.y, ballX, ballY);
+        // Nearest away player presses hard
+        const isNearest = this.isNearestAwayToBall(player, awayPlayers, ballX, ballY);
+        if (isNearest) {
+          this.setTarget(player, ballX, ballY);
         } else {
-          // Others take defensive positions
-          this.handleDefensivePosition(player, idx, ball, homePlayers, teamInAttack);
+          this.handleDefensivePosition(player, idx, ball, ballInAwayhalf);
         }
       }
     });
@@ -116,168 +132,155 @@ export default class AIController {
 
   handleBallCarrier(player, ball, awayPlayers, homePlayers) {
     const scene = this.scene;
-    const bx = ball.x;
-    const by = ball.y;
     const distToGoal = Math.abs(player.x - scene.HOME_GOAL_X);
 
-    // Move toward ball to take possession
-    if (Phaser.Math.Distance.Between(player.x, player.y, bx, by) > 30) {
-      this.setTarget(player, bx, by);
+    // Shoot if in range
+    if (distToGoal < 300 && Math.random() < this.params.shootFrequency) {
+      this.aiShoot(player, ball);
       return;
     }
 
-    // Has ball! Decide: shoot, pass, or dribble
-    const rand = Math.random();
-
-    // Check if in shooting range
-    if (distToGoal < 280) {
-      if (rand < this.params.shootFrequency) {
-        this.aiShoot(player, ball);
-        return;
-      }
-    }
-
-    // Try to pass
-    if (rand < this.params.passFrequency) {
+    // Pass if good option exists
+    if (Math.random() < this.params.passFrequency) {
       const target = this.findBestPassTarget(player, awayPlayers);
       if (target) {
         this.aiPass(player, ball, target);
         return;
       }
     }
+    // Otherwise keep dribbling (handled by dribbleTowardGoal each frame)
+  }
 
-    // Dribble toward goal
+  dribbleTowardGoal(player, ball) {
+    const scene = this.scene;
+    if (scene.ballPossessor !== player) return;
+
+    // Move toward goal — the ball follows automatically via updateBallWithPossessor
     const goalX = scene.HOME_GOAL_X;
     const goalY = scene.PITCH_HEIGHT / 2;
-    const dribbleAngle = Phaser.Math.Angle.Between(player.x, player.y, goalX, goalY);
-    const dribbleX = player.x + Math.cos(dribbleAngle) * 60;
-    const dribbleY = player.y + Math.sin(dribbleAngle) * 60;
-    this.setTarget(player, dribbleX, dribbleY);
+    const angle = Phaser.Math.Angle.Between(player.x, player.y, goalX, goalY);
 
-    // Push ball with player movement
-    if (Phaser.Math.Distance.Between(player.x, player.y, bx, by) < 25) {
-      ball.kick(
-        Math.cos(dribbleAngle) * 90 + (Math.random() - 0.5) * 20,
-        Math.sin(dribbleAngle) * 90 + (Math.random() - 0.5) * 20
-      );
-    }
+    // Slight randomness to avoid perfectly straight line
+    const jitterX = goalX + (Math.random() - 0.5) * 60;
+    const jitterY = goalY + (Math.random() - 0.5) * 80;
+    this.setTarget(player, jitterX, jitterY);
   }
 
   handleSupportRun(player, idx, ball, teamInAttack) {
     const scene = this.scene;
     const role = player.role;
-
-    // Calculate support position based on role
-    let targetX, targetY;
+    let tx, ty;
 
     if (teamInAttack) {
-      // Move into attacking positions
       if (role === 'forward') {
-        // Make run toward goal
-        targetX = scene.HOME_GOAL_X + 100 + (idx % 3) * 60;
-        targetY = scene.PITCH_HEIGHT * (0.25 + (idx % 4) * 0.15);
+        tx = scene.HOME_GOAL_X + 80 + ((idx % 3) * 55);
+        ty = scene.PITCH_HEIGHT * (0.25 + (idx % 4) * 0.16);
       } else if (role === 'midfielder') {
-        // Support in midfield
-        targetX = scene.PITCH_WIDTH * 0.35 + (idx % 2) * 80;
-        targetY = scene.PITCH_HEIGHT * (0.2 + (idx % 5) * 0.16);
+        tx = scene.PITCH_WIDTH * 0.38 + ((idx % 2) * 90);
+        ty = scene.PITCH_HEIGHT * (0.22 + (idx % 5) * 0.14);
       } else {
-        // Defenders hold midfield
-        targetX = scene.PITCH_WIDTH * 0.55;
-        targetY = scene.PITCH_HEIGHT * (0.3 + (idx % 3) * 0.2);
+        tx = scene.PITCH_WIDTH * 0.56;
+        ty = scene.PITCH_HEIGHT * (0.28 + (idx % 3) * 0.22);
       }
     } else {
-      // Defensive shape
       if (role === 'defender') {
-        targetX = scene.PITCH_WIDTH * 0.72;
-        targetY = scene.PITCH_HEIGHT * (0.2 + (idx % 4) * 0.2);
+        tx = scene.PITCH_WIDTH * 0.70;
+        ty = scene.PITCH_HEIGHT * (0.22 + (idx % 4) * 0.19);
       } else if (role === 'midfielder') {
-        targetX = scene.PITCH_WIDTH * 0.60;
-        targetY = scene.PITCH_HEIGHT * (0.25 + (idx % 3) * 0.25);
+        tx = scene.PITCH_WIDTH * 0.60;
+        ty = scene.PITCH_HEIGHT * (0.28 + (idx % 3) * 0.22);
       } else {
-        // Forwards track back a little
-        targetX = scene.PITCH_WIDTH * 0.55;
-        targetY = scene.PITCH_HEIGHT * (0.3 + (idx % 2) * 0.4);
+        tx = scene.PITCH_WIDTH * 0.54;
+        ty = scene.PITCH_HEIGHT * (0.32 + (idx % 2) * 0.36);
       }
     }
 
-    // Add some randomness to prevent robots
-    targetX += (Math.random() - 0.5) * 30;
-    targetY += (Math.random() - 0.5) * 30;
-    targetY = Phaser.Math.Clamp(targetY, 20, scene.PITCH_HEIGHT - 20);
-
-    this.setTarget(player, targetX, targetY);
+    tx += (Math.random() - 0.5) * 30;
+    ty  = Phaser.Math.Clamp(ty + (Math.random() - 0.5) * 30, 20, scene.PITCH_HEIGHT - 20);
+    this.setTarget(player, tx, ty);
   }
 
-  pressPlayer(player, ballX, ballY, homePlayers) {
-    // Move toward ball to win possession
-    this.setTarget(player, ballX + (Math.random() - 0.5) * 10, ballY + (Math.random() - 0.5) * 10);
-  }
-
-  handleDefensivePosition(player, idx, ball, homePlayers, ballInAwayhalf) {
+  handleDefensivePosition(player, idx, ball, ballInAwayhalf) {
     const scene = this.scene;
-    const ballX = ball.x;
-    const ballY = ball.y;
+    const trackY = ball.y * 0.55 + scene.PITCH_HEIGHT * 0.5 * 0.45;
     const role = player.role;
-
-    // Defensive positions (mirrored from home side)
-    let targetX, targetY;
-
-    // Track ball Y position with some lag
-    const trackY = ballY * 0.6 + scene.PITCH_HEIGHT * 0.5 * 0.4;
+    let tx, ty;
 
     if (role === 'defender') {
-      // Stay back and protect goal
-      targetX = scene.PITCH_WIDTH * 0.68 + (ballInAwayhalf ? 0.08 : 0) * scene.PITCH_WIDTH;
-      targetY = trackY + (idx - 2) * 70;
+      tx = scene.PITCH_WIDTH * 0.70 + (ballInAwayhalf ? scene.PITCH_WIDTH * 0.06 : 0);
+      ty = trackY + (idx - 2) * 68;
     } else if (role === 'midfielder') {
-      // Press in midfield
-      targetX = Phaser.Math.Clamp(ballX + 100, scene.PITCH_WIDTH * 0.52, scene.PITCH_WIDTH * 0.72);
-      targetY = trackY + (idx - 5) * 60;
+      tx = Phaser.Math.Clamp(ball.x + 90, scene.PITCH_WIDTH * 0.52, scene.PITCH_WIDTH * 0.74);
+      ty = trackY + (idx - 5) * 58;
     } else {
-      // Forwards press high
-      targetX = Phaser.Math.Clamp(ballX + 50, scene.PITCH_WIDTH * 0.45, scene.PITCH_WIDTH * 0.65);
-      targetY = trackY + (idx - 8) * 80;
+      tx = Phaser.Math.Clamp(ball.x + 50, scene.PITCH_WIDTH * 0.46, scene.PITCH_WIDTH * 0.64);
+      ty = trackY + (idx - 8) * 75;
     }
 
-    targetY = Phaser.Math.Clamp(targetY, 20, scene.PITCH_HEIGHT - 20);
-    this.setTarget(player, targetX, targetY);
+    ty = Phaser.Math.Clamp(ty, 20, scene.PITCH_HEIGHT - 20);
+    this.setTarget(player, tx, ty);
+  }
+
+  updateGoalkeeper(gk, ball, homePlayers) {
+    if (!gk) return;
+    const scene = this.scene;
+    const bx = ball.x;
+    const by = ball.y;
+
+    const homeGoalX = scene.HOME_GOAL_X + 28;
+    const distToGoal = Math.abs(bx - scene.PITCH_WIDTH);
+
+    if (bx > scene.PITCH_WIDTH * 0.6) {
+      // Ball is far — stay on line, track Y
+      const targetY = Phaser.Math.Clamp(by, scene.GOAL_TOP + 10, scene.GOAL_BOTTOM - 10);
+      gk.moveTo(homeGoalX, targetY, this.params.speed * 0.9);
+    } else {
+      // Ball is close — come off line a bit
+      const targetX = Phaser.Math.Clamp(homeGoalX + (scene.PITCH_WIDTH / 2 - bx) * 0.06, homeGoalX - 10, homeGoalX + 50);
+      const targetY = Phaser.Math.Clamp(by, scene.GOAL_TOP + 8, scene.GOAL_BOTTOM - 8);
+      gk.moveTo(targetX, targetY, this.params.speed * 1.0);
+
+      // GK saves: if ball is heading toward goal, kick it away
+      const ballVx = ball.sprite.body.velocity.x;
+      if (ballVx < -80 && scene.ballPossessor === null) {
+        const distBallToGK = Phaser.Math.Distance.Between(gk.x, gk.y, bx, by);
+        if (distBallToGK < 40) {
+          const clearAngle = Phaser.Math.Angle.Between(gk.x, gk.y, scene.PITCH_WIDTH * 0.6, by + (Math.random() - 0.5) * 120);
+          ball.kick(Math.cos(clearAngle) * 380, Math.sin(clearAngle) * 380);
+          ball.lastTouched = gk;
+        }
+      }
+    }
   }
 
   aiShoot(player, ball) {
     const scene = this.scene;
-    const goalX = scene.HOME_GOAL_X;
-    const accuracy = this.params.shootingAccuracy;
+    scene.releasePossession();
 
-    // Aim at goal with accuracy variance
-    const spread = (1 - accuracy) * 80;
+    const acc = this.params.shootingAccuracy;
+    const spread = (1 - acc) * 85;
     const goalY = scene.PITCH_HEIGHT / 2 + (Math.random() - 0.5) * (scene.GOAL_HEIGHT + spread);
+    const angle = Phaser.Math.Angle.Between(player.x, player.y, scene.HOME_GOAL_X, goalY);
+    const power = 0.60 + Math.random() * 0.40;
 
-    const angle = Phaser.Math.Angle.Between(player.x, player.y, goalX, goalY);
-    const power = 0.6 + Math.random() * 0.4;
-    const shotSpeed = 200 + power * 380;
-
-    ball.kick(
-      Math.cos(angle) * shotSpeed,
-      Math.sin(angle) * shotSpeed
-    );
+    ball.kick(Math.cos(angle) * (280 + power * 380), Math.sin(angle) * (280 + power * 380));
     ball.lastTouched = player;
     ball.isShotOnGoal = true;
   }
 
   aiPass(player, ball, target) {
-    const accuracy = this.params.passingAccuracy;
-    const spread = (1 - accuracy) * 60;
+    const scene = this.scene;
+    scene.releasePossession();
 
-    const targetX = target.x + (Math.random() - 0.5) * spread;
-    const targetY = target.y + (Math.random() - 0.5) * spread;
+    const acc = this.params.passingAccuracy;
+    const spread = (1 - acc) * 55;
+    const tx = target.x + (Math.random() - 0.5) * spread;
+    const ty = target.y + (Math.random() - 0.5) * spread;
+    const dist = Phaser.Math.Distance.Between(player.x, player.y, tx, ty);
+    const angle = Phaser.Math.Angle.Between(player.x, player.y, tx, ty);
+    const spd = Phaser.Math.Clamp(160 + dist * 0.75, 200, 360);
 
-    const angle = Phaser.Math.Angle.Between(player.x, player.y, targetX, targetY);
-    const passSpeed = 240 + Math.random() * 60;
-
-    ball.kick(
-      Math.cos(angle) * passSpeed,
-      Math.sin(angle) * passSpeed
-    );
+    ball.kick(Math.cos(angle) * spd, Math.sin(angle) * spd);
     ball.lastTouched = player;
   }
 
@@ -288,19 +291,24 @@ export default class AIController {
     teammates.forEach(t => {
       if (t === player) return;
       const dist = Phaser.Math.Distance.Between(player.x, player.y, t.x, t.y);
-      if (dist < 30 || dist > 350) return;
-
-      // Prefer players ahead (toward home goal = lower X)
-      const progress = player.x - t.x; // lower X = further toward home goal
-      const score = progress * 0.6 - dist * 0.15 + Math.random() * 25;
-
-      if (score > bestScore) {
-        bestScore = score;
-        best = t;
-      }
+      if (dist < 35 || dist > 380) return;
+      const progress = player.x - t.x; // lower X = toward home goal
+      const score = progress * 0.55 - dist * 0.12 + Math.random() * 22;
+      if (score > bestScore) { bestScore = score; best = t; }
     });
 
     return best;
+  }
+
+  isNearestAwayToBall(player, awayPlayers, bx, by) {
+    let minDist = Infinity;
+    let nearest = null;
+    awayPlayers.forEach((p, idx) => {
+      if (idx === 0) return;
+      const d = Phaser.Math.Distance.Between(p.x, p.y, bx, by);
+      if (d < minDist) { minDist = d; nearest = p; }
+    });
+    return nearest === player;
   }
 
   setTarget(player, x, y) {
@@ -313,7 +321,7 @@ export default class AIController {
 
   executeMoveToTarget(player) {
     const state = this.playerStates.get(player);
-    if (state && state.targetX !== undefined) {
+    if (state?.targetX !== undefined) {
       player.moveTo(state.targetX, state.targetY, this.params.speed);
     }
   }
