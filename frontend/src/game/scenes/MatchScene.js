@@ -458,13 +458,6 @@ export default class MatchScene extends Phaser.Scene {
       () => this.startKickoff(false)
     );
 
-    if (this.hudScoreText) {
-      this.hudScoreText.setText(`${h} - ${a}`);
-      this.hudScoreText.setStyle({ color: '#ffd700' });
-      this.time.delayedCall(800, () => {
-        if (this.hudScoreText) this.hudScoreText.setStyle({ color: '#ffffff' });
-      });
-    }
   }
 
   // ─── UPDATE LOOP ─────────────────────────────────────────────────────────
@@ -533,10 +526,6 @@ export default class MatchScene extends Phaser.Scene {
       this.checkGoal();
     }
 
-    // Sync HUD score
-    if (this.hudScoreText) {
-      this.hudScoreText.setText(`${this.score.home} - ${this.score.away}`);
-    }
   }
 
   // ─── INPUT ────────────────────────────────────────────────────────────────
@@ -655,7 +644,6 @@ export default class MatchScene extends Phaser.Scene {
     this.ball.kick(Math.cos(angle) * passSpd, Math.sin(angle) * passSpd);
     this.ball.lastTouched = player;
     this.playSound('kick', 0.65);
-    this.cameras.main.flash(35, 255, 255, 255, false);
   }
 
   doThroughBall(player) {
@@ -955,45 +943,12 @@ export default class MatchScene extends Phaser.Scene {
   // ─── HUD ─────────────────────────────────────────────────────────────────
 
   setupHUD() {
-    const cx = this.PITCH_WIDTH / 2;
-
-    this.hudScoreText = this.add.text(cx, 18, `${this.score.home} - ${this.score.away}`, {
-      fontFamily: 'monospace',
-      fontSize: '24px',
-      color: '#ffffff',
-      stroke: '#000000',
-      strokeThickness: 5,
-    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(500);
-
-    this.hudTimerText = this.add.text(cx, 48, this.formatTime(this.timeRemaining), {
-      fontFamily: 'monospace',
-      fontSize: '15px',
-      color: '#aaaaaa',
-      stroke: '#000000',
-      strokeThickness: 3,
-    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(500);
-
-    // Controls hint
-    this.add.text(8, this.cameras.main.height - 8,
-      'ARROWS: move  Z: pass  X: shoot(hold)  C: through  SPACE: tackle  TAB: switch',
-      { fontFamily: 'monospace', fontSize: '8px', color: '#888888' }
-    ).setOrigin(0, 1).setScrollFactor(0).setDepth(500);
-
-    // Power bar
-    const ph = this.cameras.main.height;
-    this.powerBarBg = this.add.rectangle(cx, ph - 20, 200, 13, 0x222222)
-      .setScrollFactor(0).setDepth(500).setVisible(false);
-    this.powerBarFill = this.add.rectangle(cx - 100, ph - 20, 0, 13, 0xff4444)
-      .setScrollFactor(0).setDepth(501).setVisible(false).setOrigin(0, 0.5);
-    this.powerBarLabel = this.add.text(cx, ph - 36, 'POWER', {
-      fontFamily: 'monospace', fontSize: '10px', color: '#ffffff',
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(502).setVisible(false);
+    // Score and timer handled by React HUD overlay.
+    // Power bar moved to React layer via window.__GAME_STATE__.
   }
 
   updateTimerDisplay() {
-    if (!this.hudTimerText) return;
-    this.hudTimerText.setText(this.formatTime(this.timeRemaining));
-    if (this.timeRemaining < 30) this.hudTimerText.setStyle({ color: '#ff4444' });
+    // Timer display handled by React HUD via timeUpdate event
   }
 
   formatTime(s) {
@@ -1003,22 +958,15 @@ export default class MatchScene extends Phaser.Scene {
   }
 
   showShootPowerBar() {
-    this.powerBarBg?.setVisible(true);
-    this.powerBarFill?.setVisible(true);
-    this.powerBarLabel?.setVisible(true);
+    if (window.__GAME_STATE__) window.__GAME_STATE__.isCharging = true;
   }
 
   hideShootPowerBar() {
-    this.powerBarBg?.setVisible(false);
-    this.powerBarFill?.setVisible(false);
-    this.powerBarLabel?.setVisible(false);
+    if (window.__GAME_STATE__) { window.__GAME_STATE__.isCharging = false; window.__GAME_STATE__.powerCharge = 0; }
   }
 
   updateShootPowerBar(power) {
-    if (!this.powerBarFill) return;
-    this.powerBarFill.setSize(200 * power, 13);
-    const col = power < 0.5 ? 0x44cc44 : power < 0.8 ? 0xffaa00 : 0xff2222;
-    this.powerBarFill.setFillStyle(col);
+    if (window.__GAME_STATE__) window.__GAME_STATE__.powerCharge = power;
   }
 
   showMessage(text, duration, callback) {

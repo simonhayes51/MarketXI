@@ -27,6 +27,9 @@ export default function PhaserGame({ homeTeam, awayTeam, matchDuration, vsAI, di
       through: false, tackle: false, switchPlayer: false,
     };
 
+    // Power bar state — read by React HUD via rAF polling
+    window.__GAME_STATE__ = { isCharging: false, powerCharge: 0 };
+
     let game = null;
 
     const initPhaser = async () => {
@@ -78,6 +81,7 @@ export default function PhaserGame({ homeTeam, awayTeam, matchDuration, vsAI, di
       window.removeEventListener('resize', handleResize);
       if (gameRef.current) { gameRef.current.destroy(true); gameRef.current = null; }
       window.__GAME_INPUT__ = null;
+      window.__GAME_STATE__ = null;
     };
   }, []);
 
